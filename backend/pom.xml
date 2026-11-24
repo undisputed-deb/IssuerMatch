@@ -50,10 +50,10 @@
 			<artifactId>spring-boot-starter-kafka</artifactId>
 		</dependency>
 
-		<!-- Only the model/tool API (the @Tool annotation) for now. The Gemini starter comes with the agent loop. -->
+		<!-- Gemini via Spring AI: ChatModel + tool calling. Key comes from GEMINI_API_KEY only. -->
 		<dependency>
 			<groupId>org.springframework.ai</groupId>
-			<artifactId>spring-ai-model</artifactId>
+			<artifactId>spring-ai-starter-model-google-genai</artifactId>
 		</dependency>
 
 		<dependency>

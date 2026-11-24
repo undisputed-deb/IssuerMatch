@@ -11,7 +11,7 @@ import org.springframework.context.annotation.Import;
 /** Full app + MockMvc + throwaway Postgres container. */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-@SpringBootTest
+@SpringBootTest(properties = "spring.ai.google.genai.api-key=test-key-not-real")
 @AutoConfigureMockMvc
 @Import(TestInfraConfig.class)
 public @interface IntegrationTest {}

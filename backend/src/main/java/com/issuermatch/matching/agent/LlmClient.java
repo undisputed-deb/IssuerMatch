@@ -1,6 +1,7 @@
 package com.issuermatch.matching.agent;
 
 import java.util.List;
+import org.springframework.ai.tool.ToolCallback;
 
 /**
  * The only way the agent talks to a language model. Production uses Gemini (via Spring AI),
@@ -11,7 +12,7 @@ public interface LlmClient {
     /**
      * @param systemPrompt trusted instructions
      * @param userPrompt   contains untrusted funding-need text, already delimited by the caller
-     * @param tools        objects with @Tool methods the model is allowed to call (an allowlist)
+     * @param tools        the allowlist: the model can call these and nothing else
      */
-    LlmResult complete(String systemPrompt, String userPrompt, List<Object> tools);
+    LlmResult complete(String systemPrompt, String userPrompt, List<ToolCallback> tools);
 }
