@@ -1,7 +1,13 @@
 package com.issuermatch.matching.agent;
 
+import com.issuermatch.common.Instrument;
 import com.issuermatch.common.Region;
+import com.issuermatch.common.RiskLevel;
 import com.issuermatch.common.Sector;
+import com.issuermatch.matching.scoring.FitScorer;
+import com.issuermatch.matching.scoring.MandateProfile;
+import com.issuermatch.matching.scoring.NeedProfile;
+import com.issuermatch.matching.scoring.ScoreBreakdown;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -71,6 +77,56 @@ public class MatchingTools {
                 (rs, n) -> new Deal(rs.getString("issuer_name"), rs.getString("sector"), rs.getString("region"),
                         rs.getBigDecimal("amount"), rs.getString("instrument"), rs.getObject("closed_on", LocalDate.class)),
                 investorId);
+    }
+
+    public record MarketNote(Sector sector, String outlook, String note) {}
+
+    // Static, invented notes. A real system would call a market-data service here.
+    private static final java.util.Map<Sector, MarketNote> MARKET = java.util.Map.of(
+            Sector.TECHNOLOGY, new MarketNote(Sector.TECHNOLOGY, "POSITIVE", "Strong appetite for growth rounds; valuations rising."),
+            Sector.FINTECH, new MarketNote(Sector.FINTECH, "NEUTRAL", "Investors favour profitable models over pure growth."),
+            Sector.HEALTHCARE, new MarketNote(Sector.HEALTHCARE, "POSITIVE", "Steady demand, long horizons, regulatory risk matters."),
+            Sector.ENERGY, new MarketNote(Sector.ENERGY, "POSITIVE", "Transition projects attract debt and infrastructure capital."),
+            Sector.REAL_ESTATE, new MarketNote(Sector.REAL_ESTATE, "CAUTIOUS", "Higher rates are slowing deals; debt terms are tighter."),
+            Sector.CONSUMER, new MarketNote(Sector.CONSUMER, "NEUTRAL", "Selective: brands with repeat revenue raise faster."),
+            Sector.INDUSTRIALS, new MarketNote(Sector.INDUSTRIALS, "NEUTRAL", "Capex-heavy raises favour secured debt and mezzanine."));
+
+    @Tool(description = "Get short market notes and outlook for a sector. Static background context, not a price feed.")
+    public MarketNote getMarketContext(@ToolParam(description = "Sector to describe") Sector sector) {
+        if (sector == null) {
+            throw new IllegalArgumentException("sector is required");
+        }
+        return MARKET.get(sector);
+    }
+
+    public record FitResult(UUID needId, UUID investorId, BigDecimal total, BigDecimal sectorPoints,
+                            BigDecimal regionPoints, BigDecimal ticketPoints, BigDecimal riskPoints,
+                            BigDecimal instrumentPoints) {}
+
+    @Tool(description = "Compute the official fit score (0-100) of one investor for one funding need, with points per "
+            + "criterion. This number is the ranking: do not invent or adjust scores yourself.")
+    public FitResult scoreFit(@ToolParam(description = "Funding need id") UUID needId,
+                              @ToolParam(description = "Investor id from a search result") UUID investorId) {
+        if (needId == null || investorId == null) {
+            throw new IllegalArgumentException("needId and investorId are required");
+        }
+        List<NeedProfile> need = db.query(
+                "SELECT sector, region, amount, instrument, risk_level FROM funding_needs WHERE id = ?",
+                (rs, n) -> new NeedProfile(Sector.valueOf(rs.getString("sector")), Region.valueOf(rs.getString("region")),
+                        rs.getBigDecimal("amount"), Instrument.valueOf(rs.getString("instrument")),
+                        RiskLevel.valueOf(rs.getString("risk_level"))), needId);
+        if (need.isEmpty()) {
+            throw new IllegalArgumentException("Unknown funding need");
+        }
+        List<MandateProfile> mandates = db.query(
+                "SELECT sector, region, min_ticket, max_ticket, risk_level, instruments FROM mandates WHERE investor_id = ?",
+                (rs, n) -> new MandateProfile(Sector.valueOf(rs.getString("sector")), Region.valueOf(rs.getString("region")),
+                        rs.getBigDecimal("min_ticket"), rs.getBigDecimal("max_ticket"),
+                        RiskLevel.valueOf(rs.getString("risk_level")),
+                        List.of((String[]) rs.getArray("instruments").getArray())), investorId);
+        ScoreBreakdown b = FitScorer.best(need.get(0), mandates)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown investor or investor has no mandates"));
+        return new FitResult(needId, investorId, b.total(), b.sector(), b.region(), b.ticket(), b.risk(), b.instrument());
     }
 
     private static <T> java.util.function.Predicate<T> distinctBy(java.util.function.Function<T, Object> key) {
