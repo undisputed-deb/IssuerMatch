@@ -1,0 +1,44 @@
+package com.issuermatch.investor;
+
+import com.issuermatch.common.Region;
+import jakarta.persistence.*;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+import org.hibernate.annotations.CreationTimestamp;
+
+@Entity
+@Table(name = "investors")
+public class Investor {
+
+    @Id @GeneratedValue(strategy = GenerationType.UUID) private UUID id;
+    private String name;
+    @Enumerated(EnumType.STRING) private InvestorType type;
+    @Enumerated(EnumType.STRING) private Region region;
+    @CreationTimestamp private Instant createdAt;
+
+    @OneToMany(mappedBy = "investor", cascade = CascadeType.REMOVE)
+    private List<Mandate> mandates = new ArrayList<>();
+
+    protected Investor() {}
+
+    public Investor(String name, InvestorType type, Region region) {
+        this.name = name;
+        this.type = type;
+        this.region = region;
+    }
+
+    public void update(String name, InvestorType type, Region region) {
+        this.name = name;
+        this.type = type;
+        this.region = region;
+    }
+
+    public UUID getId() { return id; }
+    public String getName() { return name; }
+    public InvestorType getType() { return type; }
+    public Region getRegion() { return region; }
+    public Instant getCreatedAt() { return createdAt; }
+    public List<Mandate> getMandates() { return mandates; }
+}
