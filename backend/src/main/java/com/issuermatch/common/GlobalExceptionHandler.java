@@ -3,6 +3,7 @@ package com.issuermatch.common;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -25,6 +26,13 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(ApiException.class)
     ResponseEntity<ErrorResponse> apiException(ApiException e) {
         return body(e.status(), e.status().name(), e.getMessage());
+    }
+
+    /** Unique / foreign-key / check violations. The SQL detail stays in the log, not in the response. */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    ResponseEntity<ErrorResponse> conflict(DataIntegrityViolationException e) {
+        log.warn("Data integrity violation: {}", e.getMostSpecificCause().getMessage());
+        return body(HttpStatus.CONFLICT, "CONFLICT", "Request conflicts with existing data");
     }
 
     @ExceptionHandler(Exception.class)
