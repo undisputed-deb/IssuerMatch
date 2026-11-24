@@ -4,6 +4,7 @@ import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
@@ -33,6 +34,12 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     ResponseEntity<ErrorResponse> conflict(DataIntegrityViolationException e) {
         log.warn("Data integrity violation: {}", e.getMostSpecificCause().getMessage());
         return body(HttpStatus.CONFLICT, "CONFLICT", "Request conflicts with existing data");
+    }
+
+    /** ?sort=<unknown field>. Client mistake, not a server error. */
+    @ExceptionHandler(PropertyReferenceException.class)
+    ResponseEntity<ErrorResponse> badSort(PropertyReferenceException e) {
+        return body(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "Invalid sort property");
     }
 
     @ExceptionHandler(Exception.class)
