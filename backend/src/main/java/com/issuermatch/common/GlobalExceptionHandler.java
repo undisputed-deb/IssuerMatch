@@ -8,6 +8,8 @@ import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -34,6 +36,17 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     ResponseEntity<ErrorResponse> conflict(DataIntegrityViolationException e) {
         log.warn("Data integrity violation: {}", e.getMostSpecificCause().getMessage());
         return body(HttpStatus.CONFLICT, "CONFLICT", "Request conflicts with existing data");
+    }
+
+    /** @PreAuthorize denials surface as exceptions inside the controller layer. */
+    @ExceptionHandler(AccessDeniedException.class)
+    ResponseEntity<ErrorResponse> forbidden(AccessDeniedException e) {
+        return body(HttpStatus.FORBIDDEN, "FORBIDDEN", "Access denied");
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    ResponseEntity<ErrorResponse> unauthorized(AuthenticationException e) {
+        return body(HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Authentication required");
     }
 
     /** ?sort=<unknown field>. Client mistake, not a server error. */

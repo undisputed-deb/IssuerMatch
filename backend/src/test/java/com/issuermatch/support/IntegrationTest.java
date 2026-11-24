@@ -11,7 +11,11 @@ import org.springframework.context.annotation.Import;
 /** Full app + MockMvc + throwaway Postgres container. */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
-@SpringBootTest(properties = "spring.ai.google.genai.api-key=test-key-not-real")
+@SpringBootTest(properties = {
+        "spring.ai.google.genai.api-key=test-key-not-real",
+        "app.auth.jwks-uri=http://localhost:1/unused-in-tests",
+        "app.auth.issuer=https://test.supabase.co/auth/v1",
+        "app.auth.audience=authenticated"})
 @AutoConfigureMockMvc
 @Import(TestInfraConfig.class)
 public @interface IntegrationTest {}
