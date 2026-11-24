@@ -1,0 +1,19 @@
+# secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# java / maven
+target/
+*.class
+*.log
+.idea/
+*.iml
+.vscode/
+
+# node
+node_modules/
+dist/
