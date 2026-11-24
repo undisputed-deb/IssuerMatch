@@ -20,12 +20,14 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Runs the language model for one funding need. Read-only by construction: the only tools it is given
- * are the four in MatchingTools. Calls are capped (max tool calls) and the whole run has a timeout.
+ * are the four in MatchingTools. One match() call has ONE tool-call budget and ONE deadline, even if the
+ * answer has to be repaired and asked for a second time.
  */
 @Component
 public class MatchAgent {
 
     private static final Logger log = LoggerFactory.getLogger(MatchAgent.class);
+    private static final int REPAIR_OUTPUT_LIMIT = 1500;
 
     static final String SYSTEM_PROMPT = """
             You are an investment-matching analyst on a funding platform. You find investors for ONE funding need.
@@ -70,17 +72,22 @@ public class MatchAgent {
     public record Result(List<ModelOutput.Entry> rankings, Run run) {}
 
     /**
-     * Ask the model, validate its JSON. If invalid, tell it why and ask ONE more time (a fresh conversation,
-     * with its own tool budget). Still invalid: fail safely with no results.
+     * Ask the model, validate its JSON. If invalid, tell it why (and what the tools already returned) and ask ONE more
+     * time. The tool budget and the time limit are shared by both attempts. Still invalid: fail safely, no results.
      */
     public Result match(UUID needId) {
-        Run first = run(needId, null);
+        NeedFacts need = load(needId);
+        RunToolbox toolbox = new RunToolbox(List.of(ToolCallbacks.from(tools)), maxToolCalls);
+        long deadline = System.nanoTime() + timeout.toNanos();
+
+        Run first = attempt(need, toolbox, null, deadline);
         try {
             return new Result(ModelOutput.parse(mapper, first.text(), first.toolCalls()), first);
         } catch (ModelOutput.Invalid e) {
             log.warn("Model output rejected for need {} ({}). Retrying once.", needId, e.getMessage());
-            Run second = run(needId, e.getMessage());
-            Run both = merge(first, second);
+            Run second = attempt(need, toolbox, repairNote(e.getMessage(), toolbox.calls()), deadline);
+            Run both = new Run(second.text(), first.tokensIn() + second.tokensIn(), first.tokensOut() + second.tokensOut(),
+                    first.latencyMs() + second.latencyMs(), second.toolCalls()); // toolCalls are cumulative (shared toolbox)
             try {
                 return new Result(ModelOutput.parse(mapper, second.text(), both.toolCalls()), both);
             } catch (ModelOutput.Invalid again) {
@@ -90,30 +97,25 @@ public class MatchAgent {
         }
     }
 
-    private static Run merge(Run a, Run b) {
-        List<RunToolbox.Call> calls = new java.util.ArrayList<>(a.toolCalls());
-        calls.addAll(b.toolCalls());
-        return new Run(b.text(), a.tokensIn() + b.tokensIn(), a.tokensOut() + b.tokensOut(),
-                a.latencyMs() + b.latencyMs(), calls);
-    }
-
-    /** One model attempt. Fails with AgentFailure (safe message) on timeout or model errors. */
+    /** One model attempt with its own fresh toolbox and the full time limit. Used on its own by tests. */
     public Run run(UUID needId) {
-        return run(needId, null);
-    }
-
-    /** @param repairNote when set, tells the model why its previous answer was rejected */
-    Run run(UUID needId, String repairNote) {
         NeedFacts need = load(needId);
         RunToolbox toolbox = new RunToolbox(List.of(ToolCallbacks.from(tools)), maxToolCalls);
-        String user = userPrompt(need) + (repairNote == null ? "" : "\n\nYour previous answer was rejected: "
-                + repairNote + "\nAnswer again with ONLY the JSON object.");
+        return attempt(need, toolbox, null, System.nanoTime() + timeout.toNanos());
+    }
+
+    private Run attempt(NeedFacts need, RunToolbox toolbox, String repairNote, long deadlineNanos) {
+        long remainingMs = TimeUnit.NANOSECONDS.toMillis(deadlineNanos - System.nanoTime());
+        if (remainingMs <= 0) {
+            throw new AgentFailure("Model timed out after " + timeout.toSeconds() + "s");
+        }
+        String user = userPrompt(need) + (repairNote == null ? "" : repairNote);
 
         long start = System.nanoTime();
         Future<LlmResult> future = executor.submit(() -> llm.complete(SYSTEM_PROMPT, user, toolbox.callbacks()));
         LlmResult result;
         try {
-            result = future.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            result = future.get(remainingMs, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             future.cancel(true);
             throw new AgentFailure("Model timed out after " + timeout.toSeconds() + "s");
@@ -126,9 +128,26 @@ public class MatchAgent {
             throw new AgentFailure("Interrupted");
         }
         long ms = (System.nanoTime() - start) / 1_000_000;
-        log.info("Agent run for need {}: {} ms, tokens in={} out={}, tool calls={}", needId, ms,
+        log.info("Agent attempt for need {}: {} ms, tokens in={} out={}, tool calls so far={}", need.id(), ms,
                 result.tokensIn(), result.tokensOut(), toolbox.calls().size());
         return new Run(result.text(), result.tokensIn(), result.tokensOut(), ms, toolbox.calls());
+    }
+
+    /**
+     * The retry is a fresh conversation, so it would have to repeat every tool call. Instead it is given what the
+     * tools already returned, and the shared budget stays shared. Tool output is our own data (no issuer text).
+     */
+    static String repairNote(String reason, List<RunToolbox.Call> earlier) {
+        StringBuilder sb = new StringBuilder("\n\nYour previous answer was rejected: ").append(reason).append('\n');
+        if (!earlier.isEmpty()) {
+            sb.append("Tool results you already gathered (the tool-call budget is shared, so do not repeat these calls):\n");
+            for (RunToolbox.Call c : earlier) {
+                String out = c.output().length() > REPAIR_OUTPUT_LIMIT
+                        ? c.output().substring(0, REPAIR_OUTPUT_LIMIT) + "...(truncated)" : c.output();
+                sb.append("- ").append(c.tool()).append(' ').append(c.input()).append(" -> ").append(out).append('\n');
+            }
+        }
+        return sb.append("Answer again with ONLY the JSON object.").toString();
     }
 
     private NeedFacts load(UUID needId) {

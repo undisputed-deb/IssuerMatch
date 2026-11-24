@@ -110,4 +110,63 @@ class MatchAgentRetryTest {
 
         assertThatThrownBy(() -> agent(llm).match(needId)).isInstanceOf(AgentFailure.class);
     }
+
+    @Test
+    void retryDoesNotGetAFreshToolBudget() {
+        givenOneMatchingInvestor();
+        java.util.List<String> retryOutputs = new java.util.ArrayList<>();
+        FakeLlmClient llm = new FakeLlmClient().scriptTurns(
+                (s, u, t) -> { // burns the whole budget of 12, then answers badly
+                    for (int i = 0; i < 12; i++) FakeLlmClient.callTool(t, "getMarketContext", "{\"sector\":\"FINTECH\"}");
+                    return new LlmResult("not json", 1, 1);
+                },
+                (s, u, t) -> { // tries 5 more calls: every one must be refused
+                    for (int i = 0; i < 5; i++) retryOutputs.add(FakeLlmClient.callTool(t, "getMarketContext", "{\"sector\":\"FINTECH\"}"));
+                    return new LlmResult("still not json", 1, 1);
+                });
+
+        assertThatThrownBy(() -> agent(llm).match(needId)).isInstanceOf(AgentFailure.class);
+
+        assertThat(retryOutputs).hasSize(5).containsOnly(RunToolbox.BUDGET_MESSAGE); // 12 total, never 24
+    }
+
+    @Test
+    void retryPromptCarriesTheToolResultsAlreadyGathered() {
+        givenOneMatchingInvestor();
+        FakeLlmClient llm = new FakeLlmClient().scriptTurns(
+                (s, u, t) -> { gather(t); return new LlmResult("oops", 1, 1); },
+                (s, u, t) -> new LlmResult(answerFor(), 1, 1)); // no tool calls needed: it already has the results
+
+        MatchAgent.Result result = agent(llm).match(needId);
+
+        String retryPrompt = llm.calls().get(1).userPrompt();
+        assertThat(retryPrompt).contains("already gathered").contains("searchInvestorsByMandate").contains("scoreFit");
+        assertThat(result.rankings()).hasSize(1);
+        assertThat(result.run().toolCalls()).hasSize(2); // cumulative, not duplicated
+    }
+
+    String answerFor() {
+        return "{\"rankings\":[{\"investorId\":\"" + investorId + "\",\"explanation\":\"Exact fit.\","
+                + "\"citedTools\":[\"scoreFit\",\"searchInvestorsByMandate\"]}]}";
+    }
+
+    @Test
+    void theDeadlineCoversBothAttemptsTogether() {
+        givenOneMatchingInvestor();
+        FakeLlmClient llm = new FakeLlmClient().scriptTurns(
+                (s, u, t) -> { sleep(400); return new LlmResult("not json", 1, 1); },
+                (s, u, t) -> { sleep(400); return new LlmResult(answerFor(), 1, 1); });
+        MatchAgent tight = new MatchAgent(db, llm, tools, mapper, 12, Duration.ofMillis(600));
+
+        // 400ms + 400ms > 600ms overall, so the second attempt must be cut off
+        assertThatThrownBy(() -> tight.match(needId)).isInstanceOf(AgentFailure.class).hasMessageContaining("timed out");
+    }
+
+    static void sleep(long ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
 }
