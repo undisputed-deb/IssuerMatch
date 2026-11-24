@@ -3,6 +3,7 @@ package com.issuermatch.matching.agent;
 import com.issuermatch.common.Region;
 import com.issuermatch.common.Sector;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.ai.tool.annotation.Tool;
@@ -50,6 +51,26 @@ public class MatchingTools {
                 sector.name(), region.name(), ticketSize, ticketSize);
         // an investor with two matching mandates is still one candidate
         return rows.stream().filter(distinctBy(InvestorHit::investorId)).limit(MAX_RESULTS).toList();
+    }
+
+    public record Deal(String issuerName, String sector, String region, BigDecimal amount, String instrument,
+                       LocalDate closedOn) {}
+
+    @Tool(description = "Get an investor's most recent past deals (up to 10), newest first. "
+            + "Use it to see whether the investor has real track record in a sector or region.")
+    public List<Deal> getInvestorHistory(@ToolParam(description = "Investor id from a search result") UUID investorId) {
+        if (investorId == null) {
+            throw new IllegalArgumentException("investorId is required");
+        }
+        Integer exists = db.queryForObject("SELECT count(*) FROM investors WHERE id = ?", Integer.class, investorId);
+        if (exists == null || exists == 0) {
+            throw new IllegalArgumentException("Unknown investor");
+        }
+        return db.query("SELECT issuer_name, sector, region, amount, instrument, closed_on FROM investor_deals"
+                        + " WHERE investor_id = ? ORDER BY closed_on DESC LIMIT 10",
+                (rs, n) -> new Deal(rs.getString("issuer_name"), rs.getString("sector"), rs.getString("region"),
+                        rs.getBigDecimal("amount"), rs.getString("instrument"), rs.getObject("closed_on", LocalDate.class)),
+                investorId);
     }
 
     private static <T> java.util.function.Predicate<T> distinctBy(java.util.function.Function<T, Object> key) {

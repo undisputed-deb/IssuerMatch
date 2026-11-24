@@ -60,6 +60,15 @@ public class SyntheticDataSeeder {
         Region region = pick(rnd, Region.values());
         UUID id = db.queryForObject("INSERT INTO investors(name,type,region) VALUES (?,?,?) RETURNING id",
                 UUID.class, name, pick(rnd, InvestorType.values()).name(), region.name());
+        int deals = rnd.nextInt(5); // 0..4 past deals
+        for (int d = 0; d < deals; d++) {
+            long amount = (1 + rnd.nextInt(40)) * 250_000L;
+            db.update("INSERT INTO investor_deals(investor_id,issuer_name,sector,region,amount,instrument,closed_on)"
+                            + " VALUES (?,?,?,?,?,?, current_date - ?)",
+                    id, ISSUER_PREFIX[rnd.nextInt(10)] + " " + ISSUER_SUFFIX[rnd.nextInt(2)] + " (past)",
+                    pick(rnd, Sector.values()).name(), pick(rnd, Region.values()).name(), BigDecimal.valueOf(amount),
+                    pick(rnd, Instrument.values()).name(), 30 + rnd.nextInt(1400));
+        }
         int mandates = 1 + rnd.nextInt(3);
         for (int m = 0; m < mandates; m++) {
             long min = pick(rnd, MIN_TICKETS);

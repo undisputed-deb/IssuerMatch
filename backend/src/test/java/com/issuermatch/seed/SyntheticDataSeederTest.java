@@ -27,6 +27,7 @@ class SyntheticDataSeederTest {
         assertThat(count("issuers") - issuersBefore).isEqualTo(20);
         assertThat(count("mandates")).isBetween(50L, 150L);
         assertThat(count("funding_needs")).isGreaterThanOrEqualTo(20L);
+        assertThat(count("investor_deals")).isGreaterThan(0L);
 
         assertThat(seeder.seed()).isFalse();
         assertThat(count("investors")).isEqualTo(50);
