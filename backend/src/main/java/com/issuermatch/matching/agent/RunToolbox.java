@@ -10,9 +10,9 @@ import org.springframework.ai.tool.definition.ToolDefinition;
  * One per agent run. Wraps the allowed tools so that every call is (a) counted against a hard budget
  * and (b) recorded with its input and output. The record is stored with the run for explainability.
  */
-final class RunToolbox {
+public final class RunToolbox {
 
-    record Call(String tool, String input, String output, boolean error, long ms) {}
+    public record Call(String tool, String input, String output, boolean error, long ms) {}
 
     static final String BUDGET_MESSAGE =
             "{\"error\":\"Tool call budget exhausted. Stop calling tools and give your final answer now.\"}";
