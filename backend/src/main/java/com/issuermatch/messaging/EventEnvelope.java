@@ -12,6 +12,11 @@ public record EventEnvelope(UUID eventId, String type, Instant occurredAt, Strin
         return new EventEnvelope(UUID.randomUUID(), type, Instant.now(), UUID.randomUUID().toString(), payload);
     }
 
+    /** Optional UUID field: null when absent, InvalidEventException when present but malformed. */
+    public UUID optionalUuid(String field) {
+        return payload == null || payload.get(field) == null ? null : uuid(field);
+    }
+
     /** Required UUID field. Throws InvalidEventException (never retried) when missing or malformed. */
     public UUID uuid(String field) {
         Object v = payload == null ? null : payload.get(field);

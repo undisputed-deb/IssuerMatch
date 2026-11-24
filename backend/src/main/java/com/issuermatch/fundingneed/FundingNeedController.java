@@ -6,10 +6,12 @@ import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/funding-needs")
+@PreAuthorize("hasAnyRole('ISSUER','ANALYST','ADMIN')")
 class FundingNeedController {
 
     private final FundingNeedService service;
@@ -18,6 +20,7 @@ class FundingNeedController {
         this.service = service;
     }
 
+    @PreAuthorize("hasAnyRole('ISSUER','ADMIN')") // analysts review, they do not submit
     /** 202: accepted. Matching happens asynchronously after the event is processed. */
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)

@@ -99,6 +99,8 @@ class MatchFlowTest {
 
         String needId = submit(ticket);
         String runId = awaitRun(needId, "PENDING_REVIEW");
+        assertThat(db.queryForObject("SELECT requested_by::text FROM match_runs WHERE id = ?::uuid", String.class, runId))
+                .isEqualTo("00000000-0000-0000-0000-0000000000ad"); // the (default test) admin who submitted the need
 
         // ranked by the Java score, not by the order the model listed them
         mvc.perform(get("/match-runs/" + runId + "/results"))

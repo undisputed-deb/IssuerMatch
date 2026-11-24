@@ -34,15 +34,15 @@ class CommitmentService {
 
     /** Idempotent: the whole thing (key + commitment) is one transaction. */
     @Transactional
-    Saved create(String idempotencyKey, CreateRequest request) {
+    Saved create(UUID actor, String idempotencyKey, CreateRequest request) {
         if (idempotencyKey == null || !KEY.matcher(idempotencyKey).matches()) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
                     "Idempotency-Key header is required (1-128 characters: letters, digits, . _ : -)");
         }
-        return idempotency.execute(idempotencyKey, sha256(request.canonical()), () -> doCreate(request));
+        return idempotency.execute(actor, idempotencyKey, sha256(request.canonical()), () -> doCreate(actor, request));
     }
 
-    private Saved doCreate(CreateRequest r) {
+    private Saved doCreate(UUID actor, CreateRequest r) {
         if (count("SELECT count(*) FROM funding_needs WHERE id = ?", r.needId()) == 0) {
             throw new NotFoundException("Funding need not found");
         }
@@ -55,12 +55,12 @@ class CommitmentService {
             throw new ApiException(HttpStatus.CONFLICT, "Investor is not an approved match for this funding need");
         }
         Response created = db.queryForObject(
-                "INSERT INTO commitments(need_id, investor_id, amount, status) VALUES (?,?,?,'ACCEPTED')"
+                "INSERT INTO commitments(need_id, investor_id, amount, status, created_by) VALUES (?,?,?,'ACCEPTED',?)"
                         + " RETURNING id, need_id, investor_id, amount, status, created_at",
                 (rs, n) -> new Response(rs.getObject("id", UUID.class), rs.getObject("need_id", UUID.class),
                         rs.getObject("investor_id", UUID.class), rs.getBigDecimal("amount"), rs.getString("status"),
                         rs.getTimestamp("created_at").toInstant()),
-                r.needId(), r.investorId(), r.amount());
+                r.needId(), r.investorId(), r.amount(), actor);
         return new Saved(HttpStatus.CREATED.value(), json.writeValueAsString(created), false);
     }
 

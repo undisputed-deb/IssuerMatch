@@ -47,7 +47,8 @@ class MatchRequestConsumer {
             return;
         }
         UUID runId = db.queryForObject(
-                "INSERT INTO match_runs(need_id, event_id) VALUES (?, ?) RETURNING id", UUID.class, needId, event.eventId());
+                "INSERT INTO match_runs(need_id, event_id, requested_by) VALUES (?, ?, ?) RETURNING id", UUID.class,
+                needId, event.eventId(), event.optionalUuid("requestedBy"));
         db.update("UPDATE funding_needs SET status = 'MATCHING' WHERE id = ?", needId);
         outbox.publish(Topics.MATCH_REQUESTED, needId.toString(), "MatchRequested",
                 Map.of("needId", needId.toString(), "runId", runId.toString()));

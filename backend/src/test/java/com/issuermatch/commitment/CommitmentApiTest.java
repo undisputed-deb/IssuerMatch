@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.issuermatch.support.Auth;
 import com.issuermatch.support.IntegrationTest;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -200,5 +201,28 @@ class CommitmentApiTest {
                 .andExpect(status().isNotFound());
         send(key(), "{\"needId\":\"" + needId + "\",\"investorId\":\"" + investorId + "\",\"amount\":10,\"status\":\"ACCEPTED\"}")
                 .andExpect(status().isBadRequest()); // unknown field
+    }
+
+    @Test
+    void idempotencyKeysBelongToTheCallerAndTheCreatorIsRecorded() throws Exception {
+        givenApprovedMatch();
+        String k = key();
+        String mine = send(k, body(500_000)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+
+        // Another user reusing my key gets their OWN commitment: no replay of my response, nothing leaks.
+        MvcResult theirs = mvc.perform(post("/commitments").contentType(MediaType.APPLICATION_JSON).content(body(500_000))
+                        .header("Idempotency-Key", k).with(Auth.analyst()))
+                .andExpect(status().isCreated()).andReturn();
+        assertThat(theirs.getResponse().getHeader("Idempotent-Replayed")).isNull();
+        assertThat(theirs.getResponse().getContentAsString()).isNotEqualTo(mine);
+        assertThat(commitmentCount()).isEqualTo(2);
+
+        // My own retry still replays mine.
+        send(k, body(500_000)).andExpect(header().string("Idempotent-Replayed", "true"));
+        assertThat(commitmentCount()).isEqualTo(2);
+
+        // created_by comes from the token
+        assertThat(db.queryForList("SELECT created_by::text FROM commitments WHERE need_id = ? ORDER BY created_by", String.class, needId))
+                .containsExactly("00000000-0000-0000-0000-0000000000a1", "00000000-0000-0000-0000-0000000000ad");
     }
 }

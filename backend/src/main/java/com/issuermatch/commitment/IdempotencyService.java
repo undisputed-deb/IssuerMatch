@@ -2,6 +2,7 @@ package com.issuermatch.commitment;
 
 import com.issuermatch.common.ApiException;
 import java.util.List;
+import java.util.UUID;
 import java.util.function.Supplier;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -10,7 +11,8 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Makes a write safe to retry. The key row is inserted in the SAME transaction as the work:
+ * Makes a write safe to retry. Keys are per caller: the same key from two different users is two different keys,
+ * so one user can never replay (or even probe) another user's saved response. The key row is inserted in the SAME transaction as the work:
  *  - first caller: inserts the key, does the work, saves the response, commits;
  *  - any concurrent caller with the same key blocks on the unique index until the first one commits,
  *    then finds the saved response and replays it. It never runs the work a second time;
@@ -28,19 +30,19 @@ class IdempotencyService {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    Saved execute(String key, String requestHash, Supplier<Saved> work) {
-        int inserted = db.update("INSERT INTO idempotency_keys(idem_key, request_hash) VALUES (?, ?) ON CONFLICT DO NOTHING",
-                key, requestHash);
+    Saved execute(UUID actor, String key, String requestHash, Supplier<Saved> work) {
+        int inserted = db.update("INSERT INTO idempotency_keys(actor, idem_key, request_hash) VALUES (?, ?, ?) ON CONFLICT DO NOTHING",
+                actor, key, requestHash);
         if (inserted == 1) {
             Saved saved = work.get();
-            db.update("UPDATE idempotency_keys SET status_code = ?, response_body = ? WHERE idem_key = ?",
-                    saved.status(), saved.body(), key);
+            db.update("UPDATE idempotency_keys SET status_code = ?, response_body = ? WHERE actor = ? AND idem_key = ?",
+                    saved.status(), saved.body(), actor, key);
             return saved;
         }
         // Someone else owns this key and has committed (our insert waited for them).
-        List<Stored> rows = db.query("SELECT request_hash, status_code, response_body FROM idempotency_keys WHERE idem_key = ?",
+        List<Stored> rows = db.query("SELECT request_hash, status_code, response_body FROM idempotency_keys WHERE actor = ? AND idem_key = ?",
                 (rs, n) -> new Stored(rs.getString("request_hash"), (Integer) rs.getObject("status_code"),
-                        rs.getString("response_body")), key);
+                        rs.getString("response_body")), actor, key);
         if (rows.isEmpty()) {
             // The owner rolled back between our insert and select. Ask the client to simply retry.
             throw new ApiException(HttpStatus.CONFLICT, "Request with this Idempotency-Key was in flight. Retry.");

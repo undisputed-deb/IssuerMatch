@@ -22,10 +22,10 @@ class MatchReviewService {
     }
 
     @Transactional
-    void review(UUID runId, boolean approve) {
+    void review(UUID runId, boolean approve, UUID reviewer) {
         // Conditional update = atomic compare-and-set. Two analysts clicking at once: one wins, one gets 409.
-        int changed = db.update("UPDATE match_runs SET status = ?, reviewed_at = now()"
-                + " WHERE id = ? AND status = 'PENDING_REVIEW'", approve ? "APPROVED" : "REJECTED", runId);
+        int changed = db.update("UPDATE match_runs SET status = ?, reviewed_at = now(), reviewed_by = ?"
+                + " WHERE id = ? AND status = 'PENDING_REVIEW'", approve ? "APPROVED" : "REJECTED", reviewer, runId);
         if (changed == 0) {
             Integer exists = db.queryForObject("SELECT count(*) FROM match_runs WHERE id = ?", Integer.class, runId);
             if (exists == null || exists == 0) {

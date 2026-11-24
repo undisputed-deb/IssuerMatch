@@ -6,10 +6,12 @@ import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/investors")
+@PreAuthorize("hasAnyRole('ANALYST','ADMIN')") // investor data is confidential to staff
 class InvestorController {
 
     private final InvestorService service;
@@ -18,6 +20,7 @@ class InvestorController {
         this.service = service;
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     InvestorResponse create(@Valid @RequestBody InvestorRequest r) {
@@ -34,11 +37,13 @@ class InvestorController {
         return service.get(id);
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{id}")
     InvestorResponse update(@PathVariable UUID id, @Valid @RequestBody InvestorRequest r) {
         return service.update(id, r);
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void delete(@PathVariable UUID id) {
@@ -47,6 +52,7 @@ class InvestorController {
 
     // ---- mandates ----
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/{id}/mandates")
     @ResponseStatus(HttpStatus.CREATED)
     MandateResponse addMandate(@PathVariable UUID id, @Valid @RequestBody MandateRequest r) {
@@ -63,11 +69,13 @@ class InvestorController {
         return service.getMandate(id, mid);
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{id}/mandates/{mid}")
     MandateResponse updateMandate(@PathVariable UUID id, @PathVariable UUID mid, @Valid @RequestBody MandateRequest r) {
         return service.updateMandate(id, mid, r);
     }
 
+    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{id}/mandates/{mid}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void deleteMandate(@PathVariable UUID id, @PathVariable UUID mid) {

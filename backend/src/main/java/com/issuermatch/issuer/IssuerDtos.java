@@ -11,12 +11,11 @@ import java.util.UUID;
 final class IssuerDtos {
     private IssuerDtos() {}
 
-    // ownerUserId comes from the request until Phase 4, when it is taken from the JWT instead.
     record CreateRequest(
             @NotBlank @Size(max = 200) String name,
             @NotNull Sector sector,
             @NotNull Region region,
-            @NotNull UUID ownerUserId) {}
+            UUID ownerUserId) {} // optional: only an admin may name an owner other than themselves
 
     record UpdateRequest(
             @NotBlank @Size(max = 200) String name,

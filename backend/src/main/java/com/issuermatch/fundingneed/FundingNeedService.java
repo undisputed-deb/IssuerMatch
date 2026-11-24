@@ -1,9 +1,12 @@
 package com.issuermatch.fundingneed;
 
 import com.issuermatch.common.NotFoundException;
+import com.issuermatch.issuer.Issuer;
 import com.issuermatch.issuer.IssuerRepository;
 import com.issuermatch.messaging.OutboxService;
 import com.issuermatch.messaging.Topics;
+import com.issuermatch.security.CurrentUser;
+import com.issuermatch.security.Role;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -11,6 +14,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/** Staff see every need. An issuer only the needs of companies it owns; anything else is a plain 404. */
 @Service
 @Transactional
 class FundingNeedService {
@@ -26,24 +30,41 @@ class FundingNeedService {
     }
 
     FundingNeed create(FundingNeedDtos.CreateRequest r) {
-        if (!issuers.existsById(r.issuerId())) {
+        CurrentUser me = CurrentUser.get();
+        Issuer issuer = issuers.findById(r.issuerId()).orElseThrow(() -> new NotFoundException("Issuer not found"));
+        // An admin may submit for any company. An issuer only for its own (otherwise: "not found").
+        if (!me.has(Role.ADMIN) && !issuer.getOwnerUserId().equals(me.id())) {
             throw new NotFoundException("Issuer not found");
         }
         FundingNeed need = needs.saveAndFlush(new FundingNeed(r.issuerId(), r.title(), r.description(), r.sector(),
                 r.region(), r.amount(), r.instrument(), r.riskLevel()));
         // Same transaction as the insert (outbox pattern): the need and its event commit together or not at all.
+        // requestedBy travels with the event so the agent run is attributable to the person who asked for it.
         outbox.publish(Topics.FUNDING_NEED_SUBMITTED, need.getId().toString(), "FundingNeedSubmitted",
-                Map.of("needId", need.getId().toString(), "issuerId", need.getIssuerId().toString()));
+                Map.of("needId", need.getId().toString(), "issuerId", need.getIssuerId().toString(),
+                        "requestedBy", me.id().toString()));
         return need;
     }
 
     @Transactional(readOnly = true)
     FundingNeed get(UUID id) {
-        return needs.findById(id).orElseThrow(() -> new NotFoundException("Funding need not found"));
+        CurrentUser me = CurrentUser.get();
+        FundingNeed need = needs.findById(id).orElseThrow(() -> new NotFoundException("Funding need not found"));
+        if (!me.isStaff()) {
+            boolean owns = issuers.findById(need.getIssuerId()).map(i -> i.getOwnerUserId().equals(me.id())).orElse(false);
+            if (!owns) {
+                throw new NotFoundException("Funding need not found");
+            }
+        }
+        return need;
     }
 
     @Transactional(readOnly = true)
     Page<FundingNeed> list(UUID issuerId, Pageable pageable) {
-        return issuerId == null ? needs.findAll(pageable) : needs.findByIssuerId(issuerId, pageable);
+        CurrentUser me = CurrentUser.get();
+        if (me.isStaff()) {
+            return issuerId == null ? needs.findAll(pageable) : needs.findByIssuerId(issuerId, pageable);
+        }
+        return issuerId == null ? needs.findOwnedBy(me.id(), pageable) : needs.findOwnedBy(me.id(), issuerId, pageable);
     }
 }
