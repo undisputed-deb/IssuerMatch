@@ -6,10 +6,13 @@ import com.issuermatch.matching.agent.ModelOutput;
 import com.issuermatch.messaging.OutboxService;
 import com.issuermatch.messaging.Topics;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,6 +26,8 @@ import tools.jackson.databind.json.JsonMapper;
  */
 @Service
 public class MatchRunService {
+
+    private static final Logger log = LoggerFactory.getLogger(MatchRunService.class);
 
     private final JdbcTemplate db;
     private final JsonMapper json;
@@ -42,7 +47,8 @@ public class MatchRunService {
      */
     @Transactional
     public boolean claim(UUID runId, UUID needId) {
-        return db.update("UPDATE match_runs SET status = 'RUNNING' WHERE id = ? AND need_id = ? AND status = 'REQUESTED'",
+        return db.update("UPDATE match_runs SET status = 'RUNNING', started_at = now()"
+                        + " WHERE id = ? AND need_id = ? AND status = 'REQUESTED'",
                 runId, needId) == 1;
     }
 
@@ -55,6 +61,16 @@ public class MatchRunService {
                         .thenComparing(s -> s.entry().investorId().toString())) // ties: stable and reproducible
                 .toList();
 
+        MatchAgent.Run run = result.run();
+        // Only a RUNNING run can complete. If the reaper already failed it, a late finish must not resurrect it.
+        int changed = db.update("UPDATE match_runs SET status = 'PENDING_REVIEW', tokens_in = ?, tokens_out = ?,"
+                        + " latency_ms = ?, tool_calls = ?::jsonb WHERE id = ? AND status = 'RUNNING'",
+                run.tokensIn(), run.tokensOut(), (int) Math.min(run.latencyMs(), Integer.MAX_VALUE),
+                json.writeValueAsString(run.toolCalls()), runId);
+        if (changed == 0) {
+            log.warn("Run {} finished after it was no longer RUNNING (reaped?). Result discarded.", runId);
+            return;
+        }
         int rank = 1;
         for (Scored s : ranked) {
             db.update("INSERT INTO match_results(run_id, investor_id, rank, score, explanation, cited_tools)"
@@ -62,19 +78,33 @@ public class MatchRunService {
                     runId, s.entry().investorId(), rank++, s.score(), s.entry().explanation(),
                     json.writeValueAsString(s.entry().citedTools()));
         }
-        MatchAgent.Run run = result.run();
-        db.update("UPDATE match_runs SET status = 'PENDING_REVIEW', tokens_in = ?, tokens_out = ?, latency_ms = ?,"
-                        + " tool_calls = ?::jsonb WHERE id = ?",
-                run.tokensIn(), run.tokensOut(), (int) Math.min(run.latencyMs(), Integer.MAX_VALUE),
-                json.writeValueAsString(run.toolCalls()), runId);
         announce(runId, needId, "PENDING_REVIEW", ranked.size());
     }
 
     /** @param message safe to store and show (no provider details, no secrets) */
     @Transactional
     public void fail(UUID runId, UUID needId, String message) {
-        db.update("UPDATE match_runs SET status = 'FAILED', error = ? WHERE id = ?", message, runId);
-        announce(runId, needId, "FAILED", 0);
+        int changed = db.update("UPDATE match_runs SET status = 'FAILED', error = ? WHERE id = ? AND status = 'RUNNING'",
+                message, runId);
+        if (changed == 1) {
+            announce(runId, needId, "FAILED", 0);
+        }
+    }
+
+    /**
+     * Fail runs that have been RUNNING longer than the limit (the app crashed or restarted mid-run).
+     * @return how many runs were failed
+     */
+    @Transactional
+    public int reapStuck(Duration olderThan) {
+        List<Map<String, Object>> stuck = db.queryForList(
+                "UPDATE match_runs SET status = 'FAILED', error = ? WHERE status = 'RUNNING'"
+                        + " AND started_at < now() - make_interval(secs => ?) RETURNING id, need_id",
+                "Run abandoned: no result after " + olderThan.toMinutes() + " min", olderThan.toSeconds());
+        for (Map<String, Object> r : stuck) {
+            announce((UUID) r.get("id"), (UUID) r.get("need_id"), "FAILED", 0);
+        }
+        return stuck.size();
     }
 
     private void announce(UUID runId, UUID needId, String status, int resultCount) {
