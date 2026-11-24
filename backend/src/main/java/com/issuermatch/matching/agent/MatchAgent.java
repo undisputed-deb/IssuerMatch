@@ -16,6 +16,7 @@ import org.springframework.ai.support.ToolCallbacks;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Runs the language model for one funding need. Read-only by construction: the only tools it is given
@@ -44,16 +45,18 @@ public class MatchAgent {
     private final JdbcTemplate db;
     private final LlmClient llm;
     private final MatchingTools tools;
+    private final JsonMapper mapper;
     private final int maxToolCalls;
     private final Duration timeout;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
-    MatchAgent(JdbcTemplate db, LlmClient llm, MatchingTools tools,
+    MatchAgent(JdbcTemplate db, LlmClient llm, MatchingTools tools, JsonMapper mapper,
                @Value("${app.agent.max-tool-calls:12}") int maxToolCalls,
                @Value("${app.agent.timeout:60s}") Duration timeout) {
         this.db = db;
         this.llm = llm;
         this.tools = tools;
+        this.mapper = mapper;
         this.maxToolCalls = maxToolCalls;
         this.timeout = timeout;
     }
@@ -63,7 +66,38 @@ public class MatchAgent {
     private record NeedFacts(UUID id, String sector, String region, BigDecimal amount, String instrument,
                              String riskLevel, String description) {}
 
-    /** Ask the model once. Fails with AgentFailure (safe message) on timeout or model errors. */
+    /** Validated answer plus everything that happened to produce it (tokens, latency, tool calls of all attempts). */
+    public record Result(List<ModelOutput.Entry> rankings, Run run) {}
+
+    /**
+     * Ask the model, validate its JSON. If invalid, tell it why and ask ONE more time (a fresh conversation,
+     * with its own tool budget). Still invalid: fail safely with no results.
+     */
+    public Result match(UUID needId) {
+        Run first = run(needId, null);
+        try {
+            return new Result(ModelOutput.parse(mapper, first.text(), first.toolCalls()), first);
+        } catch (ModelOutput.Invalid e) {
+            log.warn("Model output rejected for need {} ({}). Retrying once.", needId, e.getMessage());
+            Run second = run(needId, e.getMessage());
+            Run both = merge(first, second);
+            try {
+                return new Result(ModelOutput.parse(mapper, second.text(), both.toolCalls()), both);
+            } catch (ModelOutput.Invalid again) {
+                log.warn("Model output rejected again for need {}: {}", needId, again.getMessage());
+                throw new AgentFailure("Model output invalid after one retry");
+            }
+        }
+    }
+
+    private static Run merge(Run a, Run b) {
+        List<RunToolbox.Call> calls = new java.util.ArrayList<>(a.toolCalls());
+        calls.addAll(b.toolCalls());
+        return new Run(b.text(), a.tokensIn() + b.tokensIn(), a.tokensOut() + b.tokensOut(),
+                a.latencyMs() + b.latencyMs(), calls);
+    }
+
+    /** One model attempt. Fails with AgentFailure (safe message) on timeout or model errors. */
     public Run run(UUID needId) {
         return run(needId, null);
     }

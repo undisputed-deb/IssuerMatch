@@ -23,6 +23,7 @@ class MatchAgentLoopTest {
 
     @Autowired JdbcTemplate db;
     @Autowired MatchingTools tools;
+    @Autowired tools.jackson.databind.json.JsonMapper mapper;
 
     UUID need() {
         UUID issuer = db.queryForObject("INSERT INTO issuers(name,sector,region,owner_user_id) VALUES (?,'FINTECH','EUROPE',?) RETURNING id",
@@ -33,7 +34,7 @@ class MatchAgentLoopTest {
     }
 
     MatchAgent agent(FakeLlmClient llm, int maxCalls, Duration timeout) {
-        return new MatchAgent(db, llm, tools, maxCalls, timeout);
+        return new MatchAgent(db, llm, tools, mapper, maxCalls, timeout);
     }
 
     @Test
