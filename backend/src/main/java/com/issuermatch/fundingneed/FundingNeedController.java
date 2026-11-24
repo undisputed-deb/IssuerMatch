@@ -18,8 +18,9 @@ class FundingNeedController {
         this.service = service;
     }
 
+    /** 202: accepted. Matching happens asynchronously after the event is processed. */
     @PostMapping
-    @ResponseStatus(HttpStatus.CREATED)
+    @ResponseStatus(HttpStatus.ACCEPTED)
     Response create(@Valid @RequestBody CreateRequest r) {
         return Response.from(service.create(r));
     }

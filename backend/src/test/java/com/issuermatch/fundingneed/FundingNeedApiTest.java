@@ -36,7 +36,7 @@ class FundingNeedApiTest {
 
     @Test
     void createSetsStatusAndFullCapacity() throws Exception {
-        create(issuer(), "5000000", "Raising for expansion").andExpect(status().isCreated())
+        create(issuer(), "5000000", "Raising for expansion").andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.status").value("SUBMITTED"))
                 .andExpect(jsonPath("$.remainingCapacity").value(5000000))
                 .andExpect(jsonPath("$.amount").value(5000000));

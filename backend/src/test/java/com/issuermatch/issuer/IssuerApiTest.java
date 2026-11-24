@@ -43,12 +43,14 @@ class IssuerApiTest {
 
     @Test
     void listIsPaged() throws Exception {
+        long before = Long.parseLong(mvc.perform(get("/issuers")).andReturn().getResponse().getContentAsString()
+                .replaceAll(".*\"total\":(\\d+).*", "$1")); // other tests may have committed issuers
         for (int i = 0; i < 3; i++) createAndGetId("Paged " + i);
         mvc.perform(get("/issuers?size=2&page=0&sort=name,asc"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items", hasSize(2)))
                 .andExpect(jsonPath("$.size").value(2))
-                .andExpect(jsonPath("$.total").value(3));
+                .andExpect(jsonPath("$.total").value(before + 3));
     }
 
     @Test
