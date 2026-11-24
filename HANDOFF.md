@@ -13,7 +13,9 @@ IssuerMatch: Spring Boot + Kafka + Spring AI agent that ranks investors for issu
 - Live run verified with the real key (Supabase data): PENDING_REVIEW, 3 tool calls, 4210 in / 318 out tokens, ~7s, injection text in description ignored.
 - Fixes: retry shares ONE tool budget + ONE deadline (repair prompt carries earlier tool results); V9 started_at + StuckRunReaper (RUNNING > app.agent.stuck-after=5m -> FAILED + match.completed); complete()/fail() only act on RUNNING runs (late result cannot resurrect a reaped run).
 - Task 33: V10 commitments + idempotency_keys. POST /commitments needs Idempotency-Key header (^[A-Za-z0-9._:-]{1,128}$). IdempotencyService: key row inserted in SAME tx as the work; concurrent same-key callers block on the unique index then replay (header Idempotent-Replayed: true); same key + different body -> 422; failed work rolls the key back (retry allowed); hash is over a canonical string (whitespace/500000 vs 500000.00 equal). Only investors in an APPROVED run's results can commit (409 otherwise). Test: 50 parallel identical requests -> 1 row; mutation-checked (random key per request makes it fail).
-- 119 tests green.
+- Phase 4 auth DONE (163 tests green): security pkg. SecurityConfig = stateless JWT resource server; JwtDecoder from SUPABASE_JWKS_URI, ES256+RS256 only (project key is ES256 P-256), iss = SUPABASE_URL/auth/v1, aud=authenticated; app.auth.* has NO defaults (fail fast). Roles from app_metadata.roles only (SupabaseJwtConverter). CurrentUser.get() = caller. 401/403 in our JSON format (entry point + GlobalExceptionHandler). Default deny; only /health public. Role gates (@PreAuthorize) on controllers, ownership in services (issuer gets 404 for others' data). Matrix in docs/AUTH.md. V11: idempotency_keys PK (actor, key), commitments.created_by, match_runs.requested_by; reviewed_by set from token. RunToolbox.Policy: scoreFit bound to run's need (prompt-injection IDOR guard). AuditService (audit_log + audit.events via outbox, same tx, clock_timestamp, socket IP only, no free text) on issuer CRUD, need submit, approve/reject, commitment create.
+- Live smoke vs real Supabase: V9-V11 applied; no token/garbage/real anon key -> 401. NOT yet tested with a real user token (needs a user + roles in dashboard).
+- 119 tests green (before auth).
 
 ## In progress
 - nothing
@@ -28,6 +30,8 @@ IssuerMatch: Spring Boot + Kafka + Spring AI agent that ranks investors for issu
 - Tests: Docker Desktop must run (`open -a Docker`); use dangerouslyDisableSandbox for mvn test/run. Test Kafka image must be apache/kafka:3.8.0 (3.9.0 fails in Testcontainers: advertised.listeners 0.0.0.0). Compose uses 3.9.0 fine.
 - Tests share one DB container per JVM: tests that COMMIT (EventPipelineTest) leave rows; other tests must use relative counts.
 - Run app: `cd backend && ./mvnw spring-boot:run` (reads backend/.env). Seed: add `-Dspring-boot.run.profiles=seed` (idempotent; slow over network, wait for "Synthetic data created").
+- Tests: every MockMvc request is ADMIN by default (TestInfraConfig.adminByDefault). Use .with(Auth.issuer(uuid)/Auth.analyst()/Auth.noRoles()/Auth.anonymous()) to test other callers. Tokens go through the real converter; signature checks have their own test (JwtValidationTest, local EC key).
+- Maven gotcha: new <dependency> blocks must go in the LAST </dependencies> (the first is inside dependencyManagement).
 - Tests never call Gemini: IntegrationTest sets a dummy key and TestInfraConfig provides a @Primary lenient FakeLlmClient (use fake.when(predicate, turn) keyed on the prompt). Tests that COMMIT rows must clean up after themselves (MatchFlowTest, MatchAgentRetryTest do).
 - Needs Kafka up for the app to be quiet: `docker compose up -d kafka`.
 - Boot 4: Jackson 3 (tools.jackson.*), starters spring-boot-starter-webmvc/-kafka/-flyway, test annotations in org.springframework.boot.webmvc.test.autoconfigure.
