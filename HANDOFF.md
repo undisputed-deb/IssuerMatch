@@ -9,7 +9,9 @@ IssuerMatch: Spring Boot + Kafka + Spring AI agent that ranks investors for issu
 - Kafka: docker-compose.yml (Kafka 3.9.0 KRaft + UI on :8089, localhost-only). Topics funding-need.submitted, match.requested, match.completed, audit.events + .DLT for consumed ones.
 - Outbox: OutboxService (MANDATORY tx) + OutboxPublisher (poll, SKIP LOCKED). ProcessedEvents guard. MatchRequestConsumer (funding-need.submitted -> match_run + match.requested outbox event), idempotent. Retry 3x backoff then <topic>.DLT (name pinned; Spring Kafka 4 default is -dlt). EventPipelineTest proves dup event = 1 run, poison -> DLT, failing event retried -> DLT.
 - Agent building blocks: LlmClient interface (+ FakeLlmClient in tests), FitScorer (pure, 0-100, unit tested), MatchingTools with 4 read-only @Tool methods: searchInvestorsByMandate, getInvestorHistory, getMarketContext, scoreFit.
-- 71 tests green.
+- Agent (tasks 29-32): SpringAiLlmClient (Gemini 2.5 flash via Spring AI, key from GEMINI_API_KEY), RunToolbox wraps the 4 tools (call budget 12, records every call), MatchAgent (60s timeout, untrusted description fenced + angle brackets escaped), ModelOutput validator (strict JSON, investors must come from this run's search AND be scored, citedTools must be real, max 5) with ONE repair retry then FAILED. MatchRunService persists: scores/ranks from Java (scoreFit), tool_calls jsonb, tokens, latency; status PENDING_REVIEW. MatchRunConsumer (match.requested): atomic claim REQUESTED->RUNNING = idempotency; no DB tx held during LLM call; AgentFailure -> FAILED run + match.completed event. MatchReviewService: approve/reject only from PENDING_REVIEW (409 otherwise), approve -> need MATCHED, reject -> need SUBMITTED. Endpoints: GET /match-runs, /match-runs/{id} (with toolCalls), /match-runs/{id}/results, POST /match-runs/{id}/approve|reject.
+- Live run verified with the real key (Supabase data): PENDING_REVIEW, 3 tool calls, 4210 in / 318 out tokens, ~7s, injection text in description ignored.
+- 102 tests green.
 
 ## In progress
 - nothing
@@ -24,6 +26,7 @@ IssuerMatch: Spring Boot + Kafka + Spring AI agent that ranks investors for issu
 - Tests: Docker Desktop must run (`open -a Docker`); use dangerouslyDisableSandbox for mvn test/run. Test Kafka image must be apache/kafka:3.8.0 (3.9.0 fails in Testcontainers: advertised.listeners 0.0.0.0). Compose uses 3.9.0 fine.
 - Tests share one DB container per JVM: tests that COMMIT (EventPipelineTest) leave rows; other tests must use relative counts.
 - Run app: `cd backend && ./mvnw spring-boot:run` (reads backend/.env). Seed: add `-Dspring-boot.run.profiles=seed` (idempotent; slow over network, wait for "Synthetic data created").
+- Tests never call Gemini: IntegrationTest sets a dummy key and TestInfraConfig provides a @Primary lenient FakeLlmClient (use fake.when(predicate, turn) keyed on the prompt). Tests that COMMIT rows must clean up after themselves (MatchFlowTest, MatchAgentRetryTest do).
 - Needs Kafka up for the app to be quiet: `docker compose up -d kafka`.
 - Boot 4: Jackson 3 (tools.jackson.*), starters spring-boot-starter-webmvc/-kafka/-flyway, test annotations in org.springframework.boot.webmvc.test.autoconfigure.
 - Auth not built: issuer ownerUserId is in the request body until Phase 4 (then from JWT).
