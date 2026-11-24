@@ -110,7 +110,8 @@ class EventPipelineTest {
                 .isEqualTo("MATCHING");
         // both events (submitted, match.requested) were published by the outbox poller
         await().atMost(Duration.ofSeconds(10)).until(() -> db.queryForObject(
-                "SELECT count(*) FROM outbox WHERE event_key = ? AND published_at IS NOT NULL", Integer.class,
+                "SELECT count(*) FROM outbox WHERE event_key = ? AND published_at IS NOT NULL"
+                        + " AND topic IN ('funding-need.submitted', 'match.requested')", Integer.class,
                 needId.toString()) == 2);
     }
 

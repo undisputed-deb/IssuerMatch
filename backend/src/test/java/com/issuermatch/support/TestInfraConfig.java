@@ -1,8 +1,10 @@
 package com.issuermatch.support;
 
+import com.issuermatch.matching.agent.FakeLlmClient;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
@@ -14,6 +16,13 @@ public class TestInfraConfig {
     @ServiceConnection
     PostgreSQLContainer postgres() {
         return new PostgreSQLContainer("postgres:17-alpine");
+    }
+
+    /** Replaces Gemini in every Spring test: no test ever calls the real API. */
+    @Bean
+    @Primary
+    FakeLlmClient fakeLlmClient() {
+        return FakeLlmClient.lenient();
     }
 
     @Bean
