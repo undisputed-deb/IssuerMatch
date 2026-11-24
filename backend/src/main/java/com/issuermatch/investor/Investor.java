@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.CreationTimestamp;
 
 @Entity
@@ -18,6 +19,9 @@ public class Investor {
     @Enumerated(EnumType.STRING) private Region region;
     @CreationTimestamp private Instant createdAt;
 
+    // N+1 fix: load mandates for up to 100 investors in ONE query (WHERE investor_id IN (...)).
+    // JOIN FETCH would break paging (Hibernate would page in memory).
+    @BatchSize(size = 100)
     @OneToMany(mappedBy = "investor", cascade = CascadeType.REMOVE)
     private List<Mandate> mandates = new ArrayList<>();
 
