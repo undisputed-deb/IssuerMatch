@@ -1,5 +1,6 @@
 package com.issuermatch.commitment;
 
+import com.issuermatch.audit.AuditService;
 import com.issuermatch.commitment.CommitmentDtos.CreateRequest;
 import com.issuermatch.commitment.CommitmentDtos.Response;
 import com.issuermatch.commitment.IdempotencyService.Saved;
@@ -25,11 +26,13 @@ class CommitmentService {
     private final JdbcTemplate db;
     private final IdempotencyService idempotency;
     private final JsonMapper json;
+    private final AuditService audit;
 
-    CommitmentService(JdbcTemplate db, IdempotencyService idempotency, JsonMapper json) {
+    CommitmentService(JdbcTemplate db, IdempotencyService idempotency, JsonMapper json, AuditService audit) {
         this.db = db;
         this.idempotency = idempotency;
         this.json = json;
+        this.audit = audit;
     }
 
     /** Idempotent: the whole thing (key + commitment) is one transaction. */
@@ -61,6 +64,10 @@ class CommitmentService {
                         rs.getObject("investor_id", UUID.class), rs.getBigDecimal("amount"), rs.getString("status"),
                         rs.getTimestamp("created_at").toInstant()),
                 r.needId(), r.investorId(), r.amount(), actor);
+        // only a real creation is audited. A replay (same Idempotency-Key) never reaches this line.
+        audit.record("COMMITMENT_CREATED", "commitment:" + created.id(),
+                java.util.Map.of("needId", r.needId().toString(), "investorId", r.investorId().toString(),
+                        "amount", r.amount().toPlainString()));
         return new Saved(HttpStatus.CREATED.value(), json.writeValueAsString(created), false);
     }
 

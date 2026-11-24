@@ -1,5 +1,6 @@
 package com.issuermatch.matching;
 
+import com.issuermatch.audit.AuditService;
 import com.issuermatch.common.ApiException;
 import com.issuermatch.common.NotFoundException;
 import java.util.UUID;
@@ -16,9 +17,11 @@ import org.springframework.transaction.annotation.Transactional;
 class MatchReviewService {
 
     private final JdbcTemplate db;
+    private final AuditService audit;
 
-    MatchReviewService(JdbcTemplate db) {
+    MatchReviewService(JdbcTemplate db, AuditService audit) {
         this.db = db;
+        this.audit = audit;
     }
 
     @Transactional
@@ -36,5 +39,6 @@ class MatchReviewService {
         // approved -> the need is matched. rejected -> it goes back to SUBMITTED so it can be matched again later.
         db.update("UPDATE funding_needs SET status = ? WHERE id = (SELECT need_id FROM match_runs WHERE id = ?)",
                 approve ? "MATCHED" : "SUBMITTED", runId);
+        audit.record(approve ? "MATCH_APPROVED" : "MATCH_REJECTED", "match-run:" + runId, java.util.Map.of());
     }
 }

@@ -1,5 +1,6 @@
 package com.issuermatch.fundingneed;
 
+import com.issuermatch.audit.AuditService;
 import com.issuermatch.common.NotFoundException;
 import com.issuermatch.issuer.Issuer;
 import com.issuermatch.issuer.IssuerRepository;
@@ -22,11 +23,13 @@ class FundingNeedService {
     private final FundingNeedRepository needs;
     private final IssuerRepository issuers;
     private final OutboxService outbox;
+    private final AuditService audit;
 
-    FundingNeedService(FundingNeedRepository needs, IssuerRepository issuers, OutboxService outbox) {
+    FundingNeedService(FundingNeedRepository needs, IssuerRepository issuers, OutboxService outbox, AuditService audit) {
         this.needs = needs;
         this.issuers = issuers;
         this.outbox = outbox;
+        this.audit = audit;
     }
 
     FundingNeed create(FundingNeedDtos.CreateRequest r) {
@@ -43,6 +46,9 @@ class FundingNeedService {
         outbox.publish(Topics.FUNDING_NEED_SUBMITTED, need.getId().toString(), "FundingNeedSubmitted",
                 Map.of("needId", need.getId().toString(), "issuerId", need.getIssuerId().toString(),
                         "requestedBy", me.id().toString()));
+        // ids and numbers only. The title and description are free text and stay out of the audit trail.
+        audit.record("FUNDING_NEED_SUBMITTED", "funding-need:" + need.getId(),
+                Map.of("issuerId", need.getIssuerId().toString(), "amount", need.getAmount().toPlainString()));
         return need;
     }
 

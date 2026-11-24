@@ -1,8 +1,10 @@
 package com.issuermatch.issuer;
 
+import com.issuermatch.audit.AuditService;
 import com.issuermatch.common.NotFoundException;
 import com.issuermatch.security.CurrentUser;
 import com.issuermatch.security.Role;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -20,9 +22,11 @@ import org.springframework.transaction.annotation.Transactional;
 class IssuerService {
 
     private final IssuerRepository repo;
+    private final AuditService audit;
 
-    IssuerService(IssuerRepository repo) {
+    IssuerService(IssuerRepository repo, AuditService audit) {
         this.repo = repo;
+        this.audit = audit;
     }
 
     Issuer create(IssuerDtos.CreateRequest r) {
@@ -35,7 +39,9 @@ class IssuerService {
             owner = r.ownerUserId();
         }
         // saveAndFlush so a duplicate name fails here (-> 409), not at commit time
-        return repo.saveAndFlush(new Issuer(r.name(), r.sector(), r.region(), owner));
+        Issuer saved = repo.saveAndFlush(new Issuer(r.name(), r.sector(), r.region(), owner));
+        audit.record("ISSUER_CREATED", "issuer:" + saved.getId(), Map.of("ownerUserId", owner.toString()));
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -54,12 +60,15 @@ class IssuerService {
     Issuer update(UUID id, IssuerDtos.UpdateRequest r) {
         Issuer issuer = getWritable(id);
         issuer.update(r.name(), r.sector(), r.region());
-        return repo.saveAndFlush(issuer);
+        Issuer saved = repo.saveAndFlush(issuer);
+        audit.record("ISSUER_UPDATED", "issuer:" + id, Map.of());
+        return saved;
     }
 
     void delete(UUID id) {
         repo.delete(getWritable(id));
         repo.flush();
+        audit.record("ISSUER_DELETED", "issuer:" + id, Map.of());
     }
 
     /** Visible AND changeable: an admin, or the issuer-role owner. An analyst who can see it still cannot change it. */
