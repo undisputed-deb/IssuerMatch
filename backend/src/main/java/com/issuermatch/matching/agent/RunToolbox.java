@@ -17,13 +17,23 @@ public final class RunToolbox {
     static final String BUDGET_MESSAGE =
             "{\"error\":\"Tool call budget exhausted. Stop calling tools and give your final answer now.\"}";
 
+    /** Per-run permission check on tool inputs. Returns a reason to refuse, or empty to allow. */
+    @FunctionalInterface
+    interface Policy {
+        java.util.Optional<String> deny(String tool, String input);
+
+        Policy ALLOW_ALL = (tool, input) -> java.util.Optional.empty();
+    }
+
     private final int maxCalls;
+    private final Policy policy;
     private final List<Call> calls = new ArrayList<>();
     private final List<ToolCallback> wrapped;
     private int executed;
 
-    RunToolbox(List<ToolCallback> allowed, int maxCalls) {
+    RunToolbox(List<ToolCallback> allowed, int maxCalls, Policy policy) {
         this.maxCalls = maxCalls;
+        this.policy = policy;
         this.wrapped = allowed.stream().<ToolCallback>map(Recording::new).toList();
     }
 
@@ -65,6 +75,12 @@ public final class RunToolbox {
             if (!tryAcquire()) {
                 record(new Call(name, input, BUDGET_MESSAGE, true, 0));
                 return BUDGET_MESSAGE;
+            }
+            java.util.Optional<String> denied = policy.deny(name, input);
+            if (denied.isPresent()) {
+                String out = "{\"error\":" + quote("Not permitted: " + denied.get()) + "}";
+                record(new Call(name, input, out, true, 0));
+                return out;
             }
             long start = System.nanoTime();
             try {

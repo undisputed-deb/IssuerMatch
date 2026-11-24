@@ -128,4 +128,39 @@ class MatchAgentLoopTest {
         assertThat(run.tokensOut()).isEqualTo(5);
         assertThat(run.latencyMs()).isGreaterThanOrEqualTo(0);
     }
+
+    @Test
+    void scoreFitIsBoundToTheNeedOfThisRun() {
+        UUID mine = need();
+        UUID someoneElses = need();
+        String[] outputs = new String[2];
+        FakeLlmClient llm = new FakeLlmClient().scriptTurns((s, u, t) -> {
+            // A prompt-injected model tries to score another issuer's need, then its own.
+            outputs[0] = FakeLlmClient.callTool(t, "scoreFit",
+                    "{\"needId\":\"" + someoneElses + "\",\"investorId\":\"" + UUID.randomUUID() + "\"}");
+            outputs[1] = FakeLlmClient.callTool(t, "scoreFit",
+                    "{\"needId\":\"" + mine + "\",\"investorId\":\"" + UUID.randomUUID() + "\"}");
+            return new LlmResult("{}", 1, 1);
+        });
+
+        MatchAgent.Run run = agent(llm, 12, Duration.ofSeconds(5)).run(mine);
+
+        assertThat(outputs[0]).contains("Not permitted");   // refused before touching the database
+        assertThat(outputs[1]).doesNotContain("Not permitted"); // its own need is fine (fails later: unknown investor)
+        assertThat(run.toolCalls()).hasSize(2).allSatisfy(c -> assertThat(c.error()).isTrue());
+    }
+
+    @Test
+    void malformedScoreFitInputIsRefusedNotGuessed() {
+        UUID mine = need();
+        String[] out = new String[3];
+        FakeLlmClient llm = new FakeLlmClient().scriptTurns((s, u, t) -> {
+            out[0] = FakeLlmClient.callTool(t, "scoreFit", "{\"investorId\":\"" + UUID.randomUUID() + "\"}"); // no needId
+            out[1] = FakeLlmClient.callTool(t, "scoreFit", "not json");
+            out[2] = FakeLlmClient.callTool(t, "scoreFit", "{\"needId\":null}");
+            return new LlmResult("{}", 1, 1);
+        });
+        agent(llm, 12, Duration.ofSeconds(5)).run(mine);
+        assertThat(out).allSatisfy(o -> assertThat(o).contains("Not permitted"));
+    }
 }

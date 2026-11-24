@@ -77,7 +77,7 @@ public class MatchAgent {
      */
     public Result match(UUID needId) {
         NeedFacts need = load(needId);
-        RunToolbox toolbox = new RunToolbox(List.of(ToolCallbacks.from(tools)), maxToolCalls);
+        RunToolbox toolbox = new RunToolbox(List.of(ToolCallbacks.from(tools)), maxToolCalls, policyFor(needId));
         long deadline = System.nanoTime() + timeout.toNanos();
 
         Run first = attempt(need, toolbox, null, deadline);
@@ -100,8 +100,30 @@ public class MatchAgent {
     /** One model attempt with its own fresh toolbox and the full time limit. Used on its own by tests. */
     public Run run(UUID needId) {
         NeedFacts need = load(needId);
-        RunToolbox toolbox = new RunToolbox(List.of(ToolCallbacks.from(tools)), maxToolCalls);
+        RunToolbox toolbox = new RunToolbox(List.of(ToolCallbacks.from(tools)), maxToolCalls, policyFor(needId));
         return attempt(need, toolbox, null, System.nanoTime() + timeout.toNanos());
+    }
+
+    /**
+     * The model is steered by untrusted text, so its tool inputs are untrusted too. scoreFit may only look at the
+     * funding need this run was started for, never at another issuer's. (The other tools read investor data only,
+     * which the review analysts may see anyway, and none of them accept a need id.)
+     */
+    private RunToolbox.Policy policyFor(UUID needId) {
+        return (tool, input) -> {
+            if (!tool.equals("scoreFit")) {
+                return java.util.Optional.empty();
+            }
+            try {
+                tools.jackson.databind.JsonNode id = mapper.readTree(input).path("needId");
+                if (id.isString() && id.asString().equalsIgnoreCase(needId.toString())) {
+                    return java.util.Optional.empty();
+                }
+            } catch (RuntimeException e) {
+                // unreadable input falls through to the refusal below
+            }
+            return java.util.Optional.of("scoreFit may only score the funding need of this run");
+        };
     }
 
     private Run attempt(NeedFacts need, RunToolbox toolbox, String repairNote, long deadlineNanos) {
