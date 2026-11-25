@@ -29,6 +29,8 @@ Valid values: `ISSUER`, `ANALYST`, `ADMIN`. A token carries the roles it had whe
 | Match runs and results: read | no | yes | yes |
 | Approve / reject a run | no | yes | yes |
 | Record a commitment | no | yes | yes |
+| Review a flagged commitment | no | yes (not their own) | yes (not their own) |
+| Read / change risk rules (`/admin/risk-rules`) | no | no | yes |
 
 An issuer asking for someone else's data gets `404`, the same answer as for an id that does not exist, so ids cannot be probed.
 A missing role gets `403`.
