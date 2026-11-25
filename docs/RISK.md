@@ -40,7 +40,9 @@ and the admin API can tune it. `RiskEngineTest` does exactly this with a deliber
 - Only `PENDING_REVIEW` can be reviewed, once (otherwise 409).
 
 ## Concurrency
-The need's row is locked (`SELECT ... FOR UPDATE`) at the start of a commitment, so commitments to one need are decided one at a time
-against consistent numbers. A conditional capacity `UPDATE` stays as a backstop, and the table has `CHECK remaining_capacity >= 0`.
-Known limit: velocity and duplicate counts only see committed rows, so two simultaneous requests from the same investor to
-two different needs can both slip under a threshold by one.
+Each commitment locks two rows before any rule runs: the funding need (`FOR UPDATE`), then the investor (`FOR NO KEY UPDATE`).
+Requests for the same need queue, and so do requests from the same investor, so every rule judges consistent numbers.
+The order is always need then investor, so two requests cannot deadlock. A conditional capacity `UPDATE` stays as a backstop,
+and the table has `CHECK remaining_capacity >= 0`.
+`CommitmentVelocityRaceTest` fires 15 parallel requests from one investor at 15 needs. Without the investor lock 10 of them
+passed cleanly; with it exactly 4 pass, 5 are flagged and 6 are blocked.

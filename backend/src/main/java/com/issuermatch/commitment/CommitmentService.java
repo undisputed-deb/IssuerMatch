@@ -66,7 +66,11 @@ class CommitmentService {
             throw new NotFoundException("Funding need not found");
         }
         NeedRow need = needs.get(0);
-        if (count("SELECT count(*) FROM investors WHERE id = ?", r.investorId()) == 0) {
+        // Then lock the investor's row. Velocity, duplicate and concentration count this investor's history across ALL
+        // needs, so two requests for different needs must also queue. Lock order is always need, then investor: a
+        // request holding an investor lock never waits for another need, so no cycle (deadlock) is possible.
+        // NO KEY UPDATE: does not block the foreign-key checks of unrelated inserts that point at this investor.
+        if (db.queryForList("SELECT id FROM investors WHERE id = ? FOR NO KEY UPDATE", UUID.class, r.investorId()).isEmpty()) {
             throw new NotFoundException("Investor not found");
         }
         // Only an investor an analyst approved for this need may commit to it.
