@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Digits;
 import jakarta.validation.constraints.NotNull;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 final class CommitmentDtos {
@@ -21,6 +22,14 @@ final class CommitmentDtos {
         }
     }
 
+    /** Why the commitment got the status it got: one entry per rule that ran. */
+    record DecisionView(String rule, String verdict, String reason) {}
+
+    /**
+     * status: ACCEPTED (all rules passed), PENDING_REVIEW (a rule flagged it, capacity is reserved until a second
+     * person decides) or REJECTED (a rule blocked it, nothing reserved). remainingCapacity is what the raise had left
+     * when this was decided.
+     */
     record Response(UUID id, UUID needId, UUID investorId, BigDecimal amount, String status,
-                    BigDecimal remainingCapacity, Instant createdAt) {}
+                    BigDecimal remainingCapacity, List<DecisionView> decisions, Instant createdAt) {}
 }

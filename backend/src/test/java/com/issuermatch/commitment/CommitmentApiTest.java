@@ -66,6 +66,8 @@ class CommitmentApiTest {
                 UUID.class, issuerId);
         investorId = db.queryForObject("INSERT INTO investors(name,type,region) VALUES (?,'VC','EUROPE') RETURNING id",
                 UUID.class, "Commit Inv " + UUID.randomUUID());
+        db.update("INSERT INTO mandates(investor_id,sector,region,min_ticket,max_ticket,risk_level,instruments)"
+                + " VALUES (?,'FINTECH','EUROPE',1,100000000,'MEDIUM','{EQUITY}')", investorId); // any amount fits
         UUID run = db.queryForObject("INSERT INTO match_runs(need_id,event_id,status) VALUES (?,?,?) RETURNING id",
                 UUID.class, needId, UUID.randomUUID(), runStatus);
         db.update("INSERT INTO match_results(run_id,investor_id,rank,score,explanation) VALUES (?,?,1,100,'ok')", run, investorId);
@@ -131,7 +133,7 @@ class CommitmentApiTest {
     void differentKeysCreateSeparateCommitments() throws Exception {
         givenApprovedMatch();
         send(key(), body(500_000)).andExpect(status().isCreated());
-        send(key(), body(500_000)).andExpect(status().isCreated());
+        send(key(), body(600_000)).andExpect(status().isCreated()); // a different amount: identical repeats are flagged
         assertThat(commitmentCount()).isEqualTo(2);
     }
 
@@ -212,7 +214,7 @@ class CommitmentApiTest {
         // Another user reusing my key gets their OWN commitment: no replay of my response, nothing leaks.
         MvcResult theirs = mvc.perform(post("/commitments").contentType(MediaType.APPLICATION_JSON).content(body(500_000))
                         .header("Idempotency-Key", k).with(Auth.analyst()))
-                .andExpect(status().isCreated()).andReturn();
+                .andExpect(status().is2xxSuccessful()).andReturn(); // 202: same amount again is flagged as a possible duplicate
         assertThat(theirs.getResponse().getHeader("Idempotent-Replayed")).isNull();
         assertThat(theirs.getResponse().getContentAsString()).isNotEqualTo(mine);
         assertThat(commitmentCount()).isEqualTo(2);

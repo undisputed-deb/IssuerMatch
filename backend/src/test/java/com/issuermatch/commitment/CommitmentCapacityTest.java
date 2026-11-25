@@ -55,6 +55,8 @@ class CommitmentCapacityTest {
             UUID inv = db.queryForObject("INSERT INTO investors(name,type,region) VALUES (?,'VC','EUROPE') RETURNING id",
                     UUID.class, "Cap Inv " + UUID.randomUUID());
             investors.add(inv);
+            db.update("INSERT INTO mandates(investor_id,sector,region,min_ticket,max_ticket,risk_level,instruments)"
+                    + " VALUES (?,'FINTECH','EUROPE',1,100000000,'MEDIUM','{EQUITY}')", inv);
             db.update("INSERT INTO match_results(run_id,investor_id,rank,score,explanation) VALUES (?,?,?,100,'ok')", run, inv, i + 1);
         }
     }
@@ -69,8 +71,10 @@ class CommitmentCapacityTest {
         return db.queryForObject("SELECT remaining_capacity FROM funding_needs WHERE id = ?", BigDecimal.class, needId);
     }
 
+    /** Money actually held: accepted or pending. Rejected commitments are recorded but hold nothing. */
     BigDecimal committed() {
-        return db.queryForObject("SELECT coalesce(sum(amount),0) FROM commitments WHERE need_id = ?", BigDecimal.class, needId);
+        return db.queryForObject("SELECT coalesce(sum(amount),0) FROM commitments WHERE need_id = ?"
+                + " AND status IN ('ACCEPTED','PENDING_REVIEW')", BigDecimal.class, needId);
     }
 
     @Test
@@ -85,8 +89,9 @@ class CommitmentCapacityTest {
     @Test
     void aCommitmentAboveTheRemainingCapacityIsRefusedAndChangesNothing() throws Exception {
         givenNeedWithApprovedInvestors(1_000_000, 1);
-        commit(investors.get(0), 1_000_001, "cap-" + UUID.randomUUID()).andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error.code").value("CONFLICT"));
+        commit(investors.get(0), 1_000_001, "cap-" + UUID.randomUUID()).andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.status").value("REJECTED"))
+                .andExpect(jsonPath("$.decisions[?(@.rule=='capacity')].verdict").value("BLOCK"));
         assertThat(remaining()).isEqualByComparingTo("1000000");
         assertThat(committed()).isEqualByComparingTo("0");
     }
@@ -94,9 +99,11 @@ class CommitmentCapacityTest {
     @Test
     void theExactRemainingAmountIsAllowedAndThenTheRaiseIsFull() throws Exception {
         givenNeedWithApprovedInvestors(1_000_000, 1);
-        commit(investors.get(0), 1_000_000, "cap-" + UUID.randomUUID()).andExpect(status().isCreated());
+        // all of what is left is allowed, but taking 100% of it is flagged for a second look (capacity is held meanwhile)
+        commit(investors.get(0), 1_000_000, "cap-" + UUID.randomUUID()).andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.status").value("PENDING_REVIEW"));
         assertThat(remaining()).isEqualByComparingTo("0");
-        commit(investors.get(0), 1, "cap-" + UUID.randomUUID()).andExpect(status().isConflict());
+        commit(investors.get(0), 1, "cap-" + UUID.randomUUID()).andExpect(status().isUnprocessableEntity());
     }
 
     @Test
@@ -116,7 +123,7 @@ class CommitmentCapacityTest {
                 () -> commit(investors.get(0), 700_000, "race-a-" + UUID.randomUUID()).andReturn().getResponse().getStatus(),
                 () -> commit(investors.get(1), 700_000, "race-b-" + UUID.randomUUID()).andReturn().getResponse().getStatus()));
 
-        assertThat(statuses).containsExactlyInAnyOrder(201, 409);
+        assertThat(statuses).containsExactlyInAnyOrder(201, 422); // the loser is blocked by the capacity rule
         assertThat(committed()).isEqualByComparingTo("700000"); // never 1,400,000
         assertThat(remaining()).isEqualByComparingTo("300000");
     }
@@ -130,8 +137,10 @@ class CommitmentCapacityTest {
         }
         List<Integer> statuses = runInParallel(jobs);
 
-        assertThat(statuses.stream().filter(s -> s == 201).count()).isEqualTo(10); // exactly 10 x 100k fit
-        assertThat(statuses.stream().filter(s -> s == 409).count()).isEqualTo(10);
+        // 9 pass cleanly; the 10th takes the last 100k (more than 90% of what is left) so it is flagged; 10 are blocked
+        assertThat(statuses.stream().filter(s -> s == 201).count()).isEqualTo(9);
+        assertThat(statuses.stream().filter(s -> s == 202).count()).isEqualTo(1);
+        assertThat(statuses.stream().filter(s -> s == 422).count()).isEqualTo(10);
         assertThat(committed()).isEqualByComparingTo("1000000");
         assertThat(remaining()).isEqualByComparingTo("0");
     }
