@@ -176,4 +176,56 @@ class MatchFlowTest {
         mvc.perform(get("/match-runs?needId=" + UUID.randomUUID()))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.total").value(0));
     }
+
+    // ---- asking again after a failure ----
+
+    String rematchPath(String needId) {
+        return "/funding-needs/" + needId + "/match";
+    }
+
+    @Test
+    void afterAFailedRunTheOwnerCanAskForMatchingAgain() throws Exception {
+        long ticket = 7_654_324;
+        givenIssuerAndTwoInvestors(ticket);
+        var attempts = new java.util.concurrent.atomic.AtomicInteger();
+        // the first run (two model calls) returns garbage, later calls behave
+        fake.when(p -> p.contains("amount=" + ticket), (s, u, t) -> attempts.incrementAndGet() <= 2
+                ? new LlmResult("no json here", 1, 1) : goodAnswer(u, t, ticket));
+
+        String needId = submit(ticket);
+        awaitRun(needId, "FAILED");
+        assertThat(db.queryForObject("SELECT status FROM funding_needs WHERE id = ?::uuid", String.class, needId)).isEqualTo("SUBMITTED");
+
+        mvc.perform(post(rematchPath(needId))).andExpect(status().isAccepted());
+        await().atMost(Duration.ofSeconds(30)).until(() -> db.queryForObject(
+                "SELECT count(*) FROM match_runs WHERE need_id = ?::uuid AND status = 'PENDING_REVIEW'", Integer.class, needId) == 1);
+
+        // already being matched: a second click is refused, so no duplicate runs
+        mvc.perform(post(rematchPath(needId))).andExpect(status().isConflict());
+        assertThat(db.queryForObject("SELECT count(*) FROM match_runs WHERE need_id = ?::uuid", Integer.class, needId)).isEqualTo(2);
+    }
+
+    @Test
+    void rematchNeedsAFailedOrRejectedRunAndOwnership() throws Exception {
+        long ticket = 7_654_325;
+        givenIssuerAndTwoInvestors(ticket);
+        String needId = db.queryForObject("INSERT INTO funding_needs(issuer_id,title,description,sector,region,amount,instrument,"
+                + "risk_level,remaining_capacity) VALUES (?,'t','d','FINTECH','EUROPE',?,'EQUITY','MEDIUM',?) RETURNING id::text",
+                String.class, issuerId, ticket, ticket);
+
+        // freshly submitted, nothing has failed yet: it is already queued
+        mvc.perform(post(rematchPath(needId))).andExpect(status().isConflict());
+
+        db.update("INSERT INTO match_runs(need_id,event_id,status) VALUES (?::uuid,gen_random_uuid(),'REJECTED')", needId);
+        mvc.perform(post(rematchPath(needId)).with(com.issuermatch.support.Auth.issuer(UUID.randomUUID())))
+                .andExpect(status().isNotFound());                       // someone else's need
+        mvc.perform(post(rematchPath(needId)).with(com.issuermatch.support.Auth.noRoles())).andExpect(status().isForbidden());
+        mvc.perform(post(rematchPath(UUID.randomUUID().toString()))).andExpect(status().isNotFound());
+
+        fake.when(p -> p.contains("amount=" + ticket), (s, u, t) -> goodAnswer(u, t, ticket));
+        UUID owner = db.queryForObject("SELECT owner_user_id FROM issuers WHERE id = ?", UUID.class, issuerId);
+        mvc.perform(post(rematchPath(needId)).with(com.issuermatch.support.Auth.issuer(owner))).andExpect(status().isAccepted());
+        await().atMost(Duration.ofSeconds(30)).until(() -> db.queryForObject(
+                "SELECT count(*) FROM match_runs WHERE need_id = ?::uuid AND status = 'PENDING_REVIEW'", Integer.class, needId) == 1);
+    }
 }

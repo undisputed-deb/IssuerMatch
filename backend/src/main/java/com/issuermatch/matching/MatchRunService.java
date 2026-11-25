@@ -87,6 +87,7 @@ public class MatchRunService {
         int changed = db.update("UPDATE match_runs SET status = 'FAILED', error = ? WHERE id = ? AND status = 'RUNNING'",
                 message, runId);
         if (changed == 1) {
+            releaseNeed(needId);
             announce(runId, needId, "FAILED", 0);
         }
     }
@@ -102,9 +103,15 @@ public class MatchRunService {
                         + " AND started_at < now() - make_interval(secs => ?) RETURNING id, need_id",
                 "Run abandoned: no result after " + olderThan.toMinutes() + " min", olderThan.toSeconds());
         for (Map<String, Object> r : stuck) {
+            releaseNeed((UUID) r.get("need_id"));
             announce((UUID) r.get("id"), (UUID) r.get("need_id"), "FAILED", 0);
         }
         return stuck.size();
+    }
+
+    /** A run that failed must not leave its need stuck in MATCHING: back to SUBMITTED, so it can be requested again. */
+    private void releaseNeed(UUID needId) {
+        db.update("UPDATE funding_needs SET status = 'SUBMITTED', version = version + 1 WHERE id = ? AND status = 'MATCHING'", needId);
     }
 
     private void announce(UUID runId, UUID needId, String status, int resultCount) {

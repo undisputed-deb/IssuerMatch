@@ -168,4 +168,28 @@ class MatchRunServiceTest {
         service.claim(run, need);
         assertThat(db.queryForObject("SELECT started_at FROM match_runs WHERE id=?", java.sql.Timestamp.class, run)).isNotNull();
     }
+
+    // ---- a failed run must not leave the need stuck ----
+
+    String needStatus() {
+        return db.queryForObject("SELECT status FROM funding_needs WHERE id=?", String.class, need);
+    }
+
+    @Test
+    void aFailedRunPutsTheNeedBackToSubmitted() {
+        givenNeedAndRun();
+        db.update("UPDATE funding_needs SET status='MATCHING' WHERE id=?", need);
+        service.claim(run, need);
+        service.fail(run, need, "Model timed out after 60s");
+        assertThat(needStatus()).isEqualTo("SUBMITTED");
+    }
+
+    @Test
+    void aReapedRunPutsTheNeedBackToSubmitted() {
+        givenNeedAndRun();
+        db.update("UPDATE funding_needs SET status='MATCHING' WHERE id=?", need);
+        runningSince("10 minutes");
+        service.reapStuck(java.time.Duration.ofMinutes(5));
+        assertThat(needStatus()).isEqualTo("SUBMITTED");
+    }
 }

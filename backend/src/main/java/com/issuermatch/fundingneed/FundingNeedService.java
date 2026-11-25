@@ -1,6 +1,7 @@
 package com.issuermatch.fundingneed;
 
 import com.issuermatch.audit.AuditService;
+import com.issuermatch.common.ApiException;
 import com.issuermatch.common.NotFoundException;
 import com.issuermatch.issuer.Issuer;
 import com.issuermatch.issuer.IssuerRepository;
@@ -12,6 +13,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -41,15 +43,31 @@ class FundingNeedService {
         }
         FundingNeed need = needs.saveAndFlush(new FundingNeed(r.issuerId(), r.title(), r.description(), r.sector(),
                 r.region(), r.amount(), r.instrument(), r.riskLevel()));
-        // Same transaction as the insert (outbox pattern): the need and its event commit together or not at all.
-        // requestedBy travels with the event so the agent run is attributable to the person who asked for it.
-        outbox.publish(Topics.FUNDING_NEED_SUBMITTED, need.getId().toString(), "FundingNeedSubmitted",
-                Map.of("needId", need.getId().toString(), "issuerId", need.getIssuerId().toString(),
-                        "requestedBy", me.id().toString()));
+        requestMatching(need, me);
         // ids and numbers only. The title and description are free text and stay out of the audit trail.
         audit.record("FUNDING_NEED_SUBMITTED", "funding-need:" + need.getId(),
                 Map.of("issuerId", need.getIssuerId().toString(), "amount", need.getAmount().toPlainString()));
         return need;
+    }
+
+    /** Ask for another matching run after one failed or was rejected. Owner or staff. */
+    FundingNeed rematch(UUID id) {
+        FundingNeed need = get(id); // 404 for someone else's need
+        if (needs.claimForRematch(id) == 0) {
+            throw new ApiException(HttpStatus.CONFLICT,
+                    "Matching can be requested again only after a failed or rejected run, and not while one is in progress");
+        }
+        requestMatching(need, CurrentUser.get());
+        audit.record("MATCH_REQUESTED_AGAIN", "funding-need:" + id, Map.of());
+        return get(id);
+    }
+
+    private void requestMatching(FundingNeed need, CurrentUser me) {
+        // Same transaction as the change (outbox pattern): the need and its event commit together or not at all.
+        // requestedBy travels with the event so the agent run is attributable to the person who asked for it.
+        outbox.publish(Topics.FUNDING_NEED_SUBMITTED, need.getId().toString(), "FundingNeedSubmitted",
+                Map.of("needId", need.getId().toString(), "issuerId", need.getIssuerId().toString(),
+                        "requestedBy", me.id().toString()));
     }
 
     @Transactional(readOnly = true)

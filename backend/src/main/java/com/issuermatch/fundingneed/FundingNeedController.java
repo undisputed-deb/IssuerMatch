@@ -37,4 +37,11 @@ class FundingNeedController {
     Response get(@PathVariable UUID id) {
         return Response.from(service.get(id));
     }
+
+    /** Run matching again after a failed or rejected run. 202: it happens asynchronously. */
+    @PostMapping("/{id}/match")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    Response match(@PathVariable UUID id) {
+        return Response.from(service.rematch(id));
+    }
 }
