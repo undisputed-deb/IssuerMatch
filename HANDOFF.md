@@ -4,7 +4,7 @@ IssuerMatch: Spring Boot + Kafka + Spring AI agent that ranks investors for issu
 ## Done (all committed + pushed, author = user only, NO Co-Authored-By; commit+push after each task)
 - Setup: .gitignore, backend/.env.example, gitleaks pre-commit (.githooks), Boot 4.1.3 skeleton, health, error format.
 - DB: Flyway V1-V8 (issuers, investors, mandates, funding_needs, match_runs/results, audit_log, outbox+processed_events, investor_deals). CHECKs, FKs, commented indexes, RLS on every table (test guards it). Applied to real Supabase; synthetic seed loaded there (50 investors, 20 issuers, 32 needs).
-- API (no auth yet): CRUD issuers, investors (+nested mandates), funding-needs (POST -> 202, GET list/one). Paged (max 100), safe sort (400 on bad field), unknown JSON fields rejected, DTOs only.
+- API: CRUD issuers, investors (+nested mandates), funding-needs (POST -> 202, GET list/one). Paged (max 100), safe sort (400 on bad field), unknown JSON fields rejected, DTOs only.
 - Perf (docs/PERFORMANCE.md): N+1 52 -> 3 statements (@BatchSize); idx_mandates_match 17.9ms -> 0.83ms on 200k rows.
 - Kafka: docker-compose.yml (Kafka 3.9.0 KRaft + UI on :8089, localhost-only). Topics funding-need.submitted, match.requested, match.completed, audit.events + .DLT for consumed ones.
 - Outbox: OutboxService (MANDATORY tx) + OutboxPublisher (poll, SKIP LOCKED). ProcessedEvents guard. MatchRequestConsumer (funding-need.submitted -> match_run + match.requested outbox event), idempotent. Retry 3x backoff then <topic>.DLT (name pinned; Spring Kafka 4 default is -dlt). EventPipelineTest proves dup event = 1 run, poison -> DLT, failing event retried -> DLT.
@@ -15,15 +15,16 @@ IssuerMatch: Spring Boot + Kafka + Spring AI agent that ranks investors for issu
 - Task 33: V10 commitments + idempotency_keys. POST /commitments needs Idempotency-Key header (^[A-Za-z0-9._:-]{1,128}$). IdempotencyService: key row inserted in SAME tx as the work; concurrent same-key callers block on the unique index then replay (header Idempotent-Replayed: true); same key + different body -> 422; failed work rolls the key back (retry allowed); hash is over a canonical string (whitespace/500000 vs 500000.00 equal). Only investors in an APPROVED run's results can commit (409 otherwise). Test: 50 parallel identical requests -> 1 row; mutation-checked (random key per request makes it fail).
 - Phase 4 auth DONE (163 tests green): security pkg. SecurityConfig = stateless JWT resource server; JwtDecoder from SUPABASE_JWKS_URI, ES256+RS256 only (project key is ES256 P-256), iss = SUPABASE_URL/auth/v1, aud=authenticated; app.auth.* has NO defaults (fail fast). Roles from app_metadata.roles only (SupabaseJwtConverter). CurrentUser.get() = caller. 401/403 in our JSON format (entry point + GlobalExceptionHandler). Default deny; only /health public. Role gates (@PreAuthorize) on controllers, ownership in services (issuer gets 404 for others' data). Matrix in docs/AUTH.md. V11: idempotency_keys PK (actor, key), commitments.created_by, match_runs.requested_by; reviewed_by set from token. RunToolbox.Policy: scoreFit bound to run's need (prompt-injection IDOR guard). AuditService (audit_log + audit.events via outbox, same tx, clock_timestamp, socket IP only, no free text) on issuer CRUD, need submit, approve/reject, commitment create.
 - Live smoke vs real Supabase: V9-V11 applied; no token/garbage/real anon key -> 401. NOT yet tested with a real user token (needs a user + roles in dashboard).
-- 119 tests green (before auth).
+- 163 tests green. GitGuardian alert handled: no real secret was ever committed (gitleaks full history clean, none of the .env values in any commit). Credential-shaped test literals (fake `AQ.` key text, JWT-shaped strings, Basic auth `admin:admin`) are now built at runtime so scanners cannot flag them.
 
 ## In progress
 - nothing
 
 ## Next steps
-1. Task 29+: agent loop. Add Spring AI Google GenAI starter (`spring-ai-starter-model-google-genai`, BOM 2.0.3 already imported), `SpringAiLlmClient implements LlmClient` using ChatClient + tools, key from GEMINI_API_KEY (tests need a dummy key or exclude autoconfig). Max iterations + timeout, structured JSON output validated (retry once, then fail safely), persist tool calls/results/tokens/latency on match_runs, results -> PENDING_REVIEW, approve/reject endpoints. match.requested consumer runs the agent (idempotent), emits match.completed.
-2. Tool calls must be logged per run (tool_calls jsonb on match_runs). Tools are read-only; allowlist test.
-3. Then Phase 3B (commitments, idempotency keys, risk rules, reconciliation, k6), Phase 4 auth (Supabase JWT via JWKS, roles in app_metadata), Phase 5 security, 6 audit, 7 frontend, 8 observability, 9 docs.
+1. Task 34: capacity. Atomic conditional `UPDATE funding_needs SET remaining_capacity = remaining_capacity - ?, version = version + 1 WHERE id = ? AND remaining_capacity >= ?` inside the commitment tx (commitments do NOT decrement capacity yet). Race test: two investors, last capacity, exactly one wins.
+2. Then RiskRule interface + 5 rules (PASS/FLAG/BLOCK, risk_decisions table V12; FLAG -> commitments.status PENDING_REVIEW, BLOCK -> REJECTED), commitment.requested/accepted/rejected events via outbox + idempotent consumer, dead_letters table + admin list/replay (ADMIN only), reconciliation job with seeded mismatches, k6 load test with real numbers.
+3. Then Phase 5 security (Bucket4j rate limits, CORS + CSP/HSTS, prompt-injection tests, log/PII hygiene, dependency scan in CI), Phase 6 audit + SECURITY_AUDIT.md, Phase 7 frontend (Supabase JS login), Phase 8 observability/Docker/CI, Phase 9 README + INTERVIEW_NOTES.
+4. Not yet tested: a real logged-in user token against the live API (needs a Supabase user with app_metadata roles).
 
 ## Decisions & gotchas
 - Never print .env values. Names only. SUPABASE_SECRET_KEY unused.
@@ -35,6 +36,7 @@ IssuerMatch: Spring Boot + Kafka + Spring AI agent that ranks investors for issu
 - Tests never call Gemini: IntegrationTest sets a dummy key and TestInfraConfig provides a @Primary lenient FakeLlmClient (use fake.when(predicate, turn) keyed on the prompt). Tests that COMMIT rows must clean up after themselves (MatchFlowTest, MatchAgentRetryTest do).
 - Needs Kafka up for the app to be quiet: `docker compose up -d kafka`.
 - Boot 4: Jackson 3 (tools.jackson.*), starters spring-boot-starter-webmvc/-kafka/-flyway, test annotations in org.springframework.boot.webmvc.test.autoconfigure.
-- Auth not built: issuer ownerUserId is in the request body until Phase 4 (then from JWT).
+- Auth is built (see docs/AUTH.md). Issuer owner = caller; only ADMIN may name another owner.
 - If DB connect fails (no IPv6) use Supabase pooler string; username format differs. Do not guess. Direct host works on this machine.
-- Pins: Boot 4.1.3, Spring AI 2.0.3 (spring-ai-model only so far), Postgres 17, Java 21.
+- Pins: Boot 4.1.3, Spring AI 2.0.3 (Gemini starter), Postgres 17, Java 21.
+- Test files must not contain credential-shaped literals (build them at runtime). GitGuardian also scans pushes, gitleaks pre-commit only scans staged content.

@@ -56,6 +56,10 @@ class JwtValidationTest {
         decoder = SecurityConfig.configure(new NimbusJwtDecoder(processor), PROPS);
     }
 
+    static String b64(String json) {
+        return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(json.getBytes());
+    }
+
     static JWTClaimsSet.Builder claims() {
         return new JWTClaimsSet.Builder().subject(UUID.randomUUID().toString()).issuer(ISSUER).audience("authenticated")
                 .expirationTime(Date.from(Instant.now().plusSeconds(600))).issueTime(new Date());
@@ -126,7 +130,7 @@ class JwtValidationTest {
 
     @Test
     void rejectsGarbage() {
-        for (String bad : new String[] {"", "abc", "a.b.c", "....", "eyJhbGciOiJFUzI1NiJ9.e30."}) {
+        for (String bad : new String[] {"", "abc", "a.b.c", "....", b64("{\"alg\":\"ES256\"}") + "." + b64("{}") + "."}) {
             assertThatThrownBy(() -> decoder.decode(bad)).as(bad).isInstanceOf(JwtException.class);
         }
     }

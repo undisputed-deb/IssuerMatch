@@ -89,10 +89,11 @@ class MatchAgentLoopTest {
     @Test
     void providerErrorsAreHiddenBehindAGenericMessage() {
         FakeLlmClient llm = new FakeLlmClient().scriptTurns((s, u, t) -> {
-            throw new RuntimeException("401 key AQ.secret-detail rejected by provider");
+            throw new RuntimeException("PROVIDER-INTERNAL-DETAIL: request rejected");
         });
         assertThatThrownBy(() -> agent(llm, 12, Duration.ofSeconds(5)).run(need()))
-                .isInstanceOf(AgentFailure.class).hasMessage("Model call failed");
+                .isInstanceOf(AgentFailure.class).hasMessage("Model call failed")
+                .satisfies(e -> assertThat(e.getMessage()).doesNotContain("PROVIDER-INTERNAL-DETAIL"));
     }
 
     @Test
