@@ -21,5 +21,6 @@ final class CommitmentDtos {
         }
     }
 
-    record Response(UUID id, UUID needId, UUID investorId, BigDecimal amount, String status, Instant createdAt) {}
+    record Response(UUID id, UUID needId, UUID investorId, BigDecimal amount, String status,
+                    BigDecimal remainingCapacity, Instant createdAt) {}
 }

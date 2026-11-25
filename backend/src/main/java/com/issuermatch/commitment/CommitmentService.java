@@ -6,10 +6,12 @@ import com.issuermatch.commitment.CommitmentDtos.Response;
 import com.issuermatch.commitment.IdempotencyService.Saved;
 import com.issuermatch.common.ApiException;
 import com.issuermatch.common.NotFoundException;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
@@ -57,18 +59,39 @@ class CommitmentService {
                 + " WHERE m.need_id = ? AND r.investor_id = ? AND m.status = 'APPROVED'", r.needId(), r.investorId()) == 0) {
             throw new ApiException(HttpStatus.CONFLICT, "Investor is not an approved match for this funding need");
         }
+        BigDecimal remaining = takeCapacity(r.needId(), r.amount());
         Response created = db.queryForObject(
                 "INSERT INTO commitments(need_id, investor_id, amount, status, created_by) VALUES (?,?,?,'ACCEPTED',?)"
                         + " RETURNING id, need_id, investor_id, amount, status, created_at",
                 (rs, n) -> new Response(rs.getObject("id", UUID.class), rs.getObject("need_id", UUID.class),
                         rs.getObject("investor_id", UUID.class), rs.getBigDecimal("amount"), rs.getString("status"),
-                        rs.getTimestamp("created_at").toInstant()),
+                        remaining, rs.getTimestamp("created_at").toInstant()),
                 r.needId(), r.investorId(), r.amount(), actor);
         // only a real creation is audited. A replay (same Idempotency-Key) never reaches this line.
         audit.record("COMMITMENT_CREATED", "commitment:" + created.id(),
                 java.util.Map.of("needId", r.needId().toString(), "investorId", r.investorId().toString(),
                         "amount", r.amount().toPlainString()));
         return new Saved(HttpStatus.CREATED.value(), json.writeValueAsString(created), false);
+    }
+
+    /**
+     * Reserve capacity atomically. One conditional UPDATE does the check and the change together:
+     * Postgres locks the need's row, so a second commitment arriving at the same moment waits, then re-checks
+     * against the value the first one committed. Two investors can never both take the last of the raise,
+     * and no read-then-write gap exists to race through. (The table's CHECK remaining_capacity >= 0 is the backstop.)
+     * The lock is held until the surrounding transaction ends, so a failure later in the request releases the capacity.
+     *
+     * @return what is left after this commitment
+     */
+    private BigDecimal takeCapacity(UUID needId, BigDecimal amount) {
+        List<BigDecimal> left = db.queryForList(
+                "UPDATE funding_needs SET remaining_capacity = remaining_capacity - ?, version = version + 1"
+                        + " WHERE id = ? AND remaining_capacity >= ? RETURNING remaining_capacity",
+                BigDecimal.class, amount, needId, amount);
+        if (left.isEmpty()) {
+            throw new ApiException(HttpStatus.CONFLICT, "Amount exceeds the remaining capacity of this funding need");
+        }
+        return left.get(0);
     }
 
     private int count(String sql, Object... args) {
