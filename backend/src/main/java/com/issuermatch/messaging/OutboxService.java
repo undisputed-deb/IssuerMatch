@@ -28,4 +28,10 @@ public class OutboxService {
         db.update("INSERT INTO outbox(topic,event_key,payload) VALUES (?,?,?)", topic, key, json.writeValueAsString(event));
         return event;
     }
+
+    /** Queue an already-serialised message exactly as it is (dead-letter replay). Same transaction rule as publish. */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void republish(String topic, String key, String rawPayload) {
+        db.update("INSERT INTO outbox(topic,event_key,payload) VALUES (?,?,?)", topic, key, rawPayload);
+    }
 }

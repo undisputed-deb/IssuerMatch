@@ -10,4 +10,8 @@ public final class Topics {
     public static final String COMMITMENT_REQUESTED = "commitment.requested";
     public static final String COMMITMENT_ACCEPTED = "commitment.accepted";
     public static final String COMMITMENT_REJECTED = "commitment.rejected";
+
+    /** Topics this application has a consumer for. Dead letters may be replayed only into these. */
+    public static final java.util.Set<String> CONSUMED = java.util.Set.of(FUNDING_NEED_SUBMITTED, MATCH_REQUESTED,
+            COMMITMENT_REQUESTED, COMMITMENT_ACCEPTED, COMMITMENT_REJECTED);
 }
