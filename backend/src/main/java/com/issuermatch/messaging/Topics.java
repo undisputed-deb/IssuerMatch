@@ -7,4 +7,7 @@ public final class Topics {
     public static final String MATCH_REQUESTED = "match.requested";
     public static final String MATCH_COMPLETED = "match.completed";
     public static final String AUDIT_EVENTS = "audit.events";
+    public static final String COMMITMENT_REQUESTED = "commitment.requested";
+    public static final String COMMITMENT_ACCEPTED = "commitment.accepted";
+    public static final String COMMITMENT_REJECTED = "commitment.rejected";
 }

@@ -38,8 +38,11 @@ class CommitmentService {
     private final JsonMapper json;
     private final AuditService audit;
     private final RiskEngine risk;
+    private final CommitmentEvents events;
 
-    CommitmentService(JdbcTemplate db, IdempotencyService idempotency, JsonMapper json, AuditService audit, RiskEngine risk) {
+    CommitmentService(JdbcTemplate db, IdempotencyService idempotency, JsonMapper json, AuditService audit, RiskEngine risk,
+                      CommitmentEvents events) {
+        this.events = events;
         this.db = db;
         this.idempotency = idempotency;
         this.json = json;
@@ -110,6 +113,15 @@ class CommitmentService {
         audit.record("COMMITMENT_" + status, "commitment:" + id,
                 Map.of("needId", r.needId().toString(), "investorId", r.investorId().toString(),
                         "amount", r.amount().toPlainString()));
+        // Events in the same transaction (outbox). A flagged commitment is only "requested" until someone decides.
+        var facts = new CommitmentEvents.Facts(id, r.needId(), r.investorId(), r.amount());
+        events.requested(facts);
+        if (outcome.verdict() == Verdict.PASS) {
+            events.accepted(facts);
+        } else if (outcome.verdict() == Verdict.BLOCK) {
+            events.rejected(facts, outcome.results().stream().filter(x -> x.decision().verdict() == Verdict.BLOCK)
+                    .map(x -> x.ruleId() + ": " + x.decision().reason()).collect(java.util.stream.Collectors.joining("; ")));
+        }
         int http = switch (outcome.verdict()) {
             case PASS -> HttpStatus.CREATED.value();          // 201: accepted
             case FLAG -> HttpStatus.ACCEPTED.value();         // 202: recorded, waiting for a second person
@@ -123,7 +135,7 @@ class CommitmentService {
     /** Four eyes: whoever recorded a commitment cannot be the one who approves or rejects it. */
     @Transactional
     Response review(UUID commitmentId, boolean approve, UUID reviewer) {
-        var rows = db.queryForList("SELECT need_id, amount, status, created_by FROM commitments WHERE id = ? FOR UPDATE",
+        var rows = db.queryForList("SELECT need_id, investor_id, amount, status, created_by FROM commitments WHERE id = ? FOR UPDATE",
                 commitmentId);
         if (rows.isEmpty()) {
             throw new NotFoundException("Commitment not found");
@@ -143,6 +155,13 @@ class CommitmentService {
                     row.get("amount"), row.get("need_id"));
         }
         audit.record(approve ? "COMMITMENT_REVIEW_APPROVED" : "COMMITMENT_REVIEW_REJECTED", "commitment:" + commitmentId, Map.of());
+        var facts = new CommitmentEvents.Facts(commitmentId, (UUID) row.get("need_id"), (UUID) row.get("investor_id"),
+                (BigDecimal) row.get("amount"));
+        if (approve) {
+            events.accepted(facts);
+        } else {
+            events.rejected(facts, "Rejected by reviewer");
+        }
         return get(commitmentId);
     }
 
