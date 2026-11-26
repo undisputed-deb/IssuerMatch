@@ -46,35 +46,52 @@ class MarketAndScoreToolsTest {
         assertThatThrownBy(() -> tools.getMarketContext(null)).isInstanceOf(IllegalArgumentException.class);
     }
 
+    MatchingTools.FitResult one(UUID need, UUID investor) {
+        return tools.scoreFit(need, java.util.List.of(investor)).get(0);
+    }
+
     @Test
-    void scoreFitMatchesThePureScorer() {
+    void scoreFitReturnsTheStructuredBreakdown() {
         UUID need = need();
         UUID perfect = investorWithMandates("FINTECH,EUROPE,500000,2000000,MEDIUM");
-        MatchingTools.FitResult r = tools.scoreFit(need, perfect);
-        assertThat(r.total().doubleValue()).isEqualTo(100.0);
-        assertThat(r.ticketPoints().doubleValue()).isEqualTo(30.0);
+        MatchingTools.FitResult r = one(need, perfect);
+        assertThat(r.error()).isNull();
+        assertThat(r.total().doubleValue()).isEqualTo(75.0); // no past deals and no thesis: those 25 points are not earned
+        assertThat(r.breakdown().ticketFit().doubleValue()).isEqualTo(25.0);
+        assertThat(r.breakdown().disqualifiers()).isEmpty();
     }
 
     @Test
-    void scoreFitUsesTheBestMandate() {
+    void scoreFitScoresManyInvestorsInOneCallUsingTheBestMandate() {
         UUID need = need();
-        UUID inv = investorWithMandates("ENERGY,LATAM,5000000,9000000,HIGH", "FINTECH,EUROPE,500000,2000000,MEDIUM");
-        assertThat(tools.scoreFit(need, inv).total().doubleValue()).isEqualTo(100.0);
+        UUID best = investorWithMandates("ENERGY,LATAM,5000000,9000000,HIGH", "FINTECH,EUROPE,500000,2000000,MEDIUM");
+        UUID weaker = investorWithMandates("FINTECH,LATAM,500000,2000000,MEDIUM");
+        var results = tools.scoreFit(need, java.util.List.of(best, weaker));
+        assertThat(results).extracting(MatchingTools.FitResult::investorId).containsExactly(best, weaker);
+        assertThat(results.get(0).total()).isGreaterThan(results.get(1).total());
     }
 
     @Test
-    void scoreFitIsRepeatable() {
-        UUID need = need();
-        UUID inv = investorWithMandates("FINTECH,LATAM,2000000,4000000,LOW");
-        assertThat(tools.scoreFit(need, inv)).isEqualTo(tools.scoreFit(need, inv));
+    void scoreFitIsRepeatableAndConvertsCurrencies() {
+        UUID need = need(); // raises 1,000,000 USD
+        UUID inv = investorWithMandates("FINTECH,EUROPE,900000,950000,MEDIUM");
+        assertThat(one(need, inv)).isEqualTo(one(need, inv));
+        assertThat(one(need, inv).breakdown().ticketFit().doubleValue()).isLessThan(25.0); // 950k USD is below the raise
+        db.update("UPDATE investors SET currency = 'EUR' WHERE id = ?", inv);              // 972k to 1.026M USD now covers it
+        assertThat(one(need, inv).breakdown().ticketFit().doubleValue()).isEqualTo(25.0);
     }
 
     @Test
-    void scoreFitRejectsUnknownIdsAndInvestorsWithoutMandates() {
+    void scoreFitReportsUnknownIdsPerInvestorAndRejectsBadCalls() {
         UUID need = need();
-        assertThatThrownBy(() -> tools.scoreFit(UUID.randomUUID(), UUID.randomUUID())).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> tools.scoreFit(need, UUID.randomUUID())).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> tools.scoreFit(need, investorWithMandates())).isInstanceOf(IllegalArgumentException.class);
+        UUID ok = investorWithMandates("FINTECH,EUROPE,500000,2000000,MEDIUM");
+        var mixed = tools.scoreFit(need, java.util.List.of(ok, UUID.randomUUID(), investorWithMandates()));
+        assertThat(mixed.get(0).error()).isNull();
+        assertThat(mixed.get(1).error()).contains("Unknown investor");
+        assertThat(mixed.get(2).total()).isNull();
+        assertThatThrownBy(() -> tools.scoreFit(UUID.randomUUID(), java.util.List.of(ok))).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> tools.scoreFit(need, java.util.List.of())).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> tools.scoreFit(need, java.util.Collections.nCopies(21, ok))).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> tools.scoreFit(null, null)).isInstanceOf(IllegalArgumentException.class);
     }
 }

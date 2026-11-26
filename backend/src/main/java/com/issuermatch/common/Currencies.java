@@ -29,6 +29,17 @@ public final class Currencies {
         return amount.multiply(rate).setScale(2, RoundingMode.HALF_UP);
     }
 
+    public static BigDecimal convert(BigDecimal amount, String from, String to) {
+        return from.equals(to) ? amount : toUsd(amount, from).divide(USD_PER_UNIT.get(to), 2, RoundingMode.HALF_UP);
+    }
+
+    /** "('USD',1),('EUR',1.08),..." for a SQL VALUES list. Built only from the constants above, never from input. */
+    public static String sqlRateValues() {
+        return USD_PER_UNIT.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                .map(e -> "('" + e.getKey() + "'," + e.getValue().toPlainString() + ")")
+                .collect(java.util.stream.Collectors.joining(","));
+    }
+
     public static boolean isSupported(String currency) {
         return USD_PER_UNIT.containsKey(currency);
     }

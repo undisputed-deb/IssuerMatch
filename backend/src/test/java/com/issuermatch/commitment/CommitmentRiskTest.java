@@ -311,4 +311,13 @@ class CommitmentRiskTest {
                 .andExpect(jsonPath("$.decisions", hasSize(5)));
         mvc.perform(get("/commitments/" + UUID.randomUUID()).with(Auth.analyst())).andExpect(status().isNotFound());
     }
+
+    @Test
+    void ticketLimitsCompareAmountsInTheSameCurrency() throws Exception {
+        givenApprovedMatch(); // the investor's mandate is 100k to 1M US dollars
+        db.update("UPDATE funding_needs SET currency = 'EUR' WHERE id = ?", needId);
+        commit(900_000).andExpect(status().isCreated());    // 900k EUR = 972k USD: inside
+        commit(1_000_000).andExpect(status().isAccepted())  // 1M EUR = 1.08M USD: 8% outside, flagged
+                .andExpect(jsonPath("$.decisions[?(@.rule=='ticket-range')].verdict").value("FLAG"));
+    }
 }

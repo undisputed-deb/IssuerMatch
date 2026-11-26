@@ -49,7 +49,7 @@ class RiskEngineTest {
             public int investorCommitmentsWithin(Duration w) { return 0; }
             public int identicalCommitmentsWithin(Duration w) { return 0; }
         };
-        return new RiskContext(UUID.randomUUID(), UUID.randomUUID(), BigDecimal.valueOf(500_000), BigDecimal.valueOf(10_000_000),
+        return new RiskContext(UUID.randomUUID(), UUID.randomUUID(), BigDecimal.valueOf(500_000), BigDecimal.valueOf(500_000), BigDecimal.valueOf(10_000_000),
                 List.of(new RiskContext.TicketRange(BigDecimal.valueOf(100_000), BigDecimal.valueOf(1_000_000))), quiet);
     }
 
@@ -76,7 +76,7 @@ class RiskEngineTest {
     @Test
     void blockBeatsFlagBeatsPass() {
         RiskContext over = new RiskContext(UUID.randomUUID(), UUID.randomUUID(), BigDecimal.valueOf(20_000_000),
-                BigDecimal.valueOf(10_000_000), List.of(), benign().facts());
+                BigDecimal.valueOf(20_000_000), BigDecimal.valueOf(10_000_000), List.of(), benign().facts());
         assertThat(engine.evaluate(over).verdict()).isEqualTo(Verdict.BLOCK); // capacity blocks, the crash only flags
     }
 }

@@ -1,31 +1,37 @@
 package com.issuermatch.matching.agent;
 
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Parses and checks the model's final JSON. The model is not trusted: every investor must have come from
- * a search in THIS run and must have been scored by the scoreFit tool, and every cited tool must really
- * have been called. A score is never read from the model's text.
+ * Parses and checks the model's final JSON. The model is not trusted: every investor must have come from a search in
+ * THIS run and have been scored by scoreFit without disqualifiers, every cited tool must really have been called, and
+ * text that one investor will read must not name another. A score is never read from the model's text.
  */
 public final class ModelOutput {
 
-    static final int MAX_RANKINGS = 5;
+    static final int MAX_RANKINGS = 10;
     static final int MAX_EXPLANATION = 1500;
-    /** Markup, links and script URLs have no place in an explanation: they are how model output attacks a browser. */
+    static final int MAX_BRIEF = 800;
+    static final int MIN_QUESTIONS = 3;
+    static final int MAX_QUESTIONS = 5;
+    static final int MAX_QUESTION = 300;
+    /** Markup, links and script URLs have no place in model text: they are how model output attacks a browser. */
     private static final Pattern ACTIVE_CONTENT = Pattern.compile(
             "<[a-zA-Z/!?]|https?://|\\]\\(|javascript:|data:text|vbscript:|www\\.[a-z0-9-]+\\.[a-z]", Pattern.CASE_INSENSITIVE);
-    private static final Pattern UUID_PATTERN =
-            Pattern.compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
+    private static final Set<String> SEARCH_TOOLS = Set.of("searchInvestorsByMandate", "searchInvestorsByThesisSemantic");
 
-    public record Entry(UUID investorId, String explanation, List<String> citedTools) {}
+    public record Entry(UUID investorId, String explanation, List<String> citedTools, String dealBrief,
+                        List<String> suggestedDiligenceQuestions) {}
 
     private record Envelope(List<Entry> rankings) {}
 
@@ -62,14 +68,14 @@ public final class ModelOutput {
         if (rankings.size() > MAX_RANKINGS) {
             throw new Invalid("at most " + MAX_RANKINGS + " rankings are allowed");
         }
-        validate(rankings, calls);
+        validate(mapper, rankings, calls);
         return rankings;
     }
 
-    private static void validate(List<Entry> rankings, List<RunToolbox.Call> calls) {
-        Set<UUID> candidates = candidates(calls);
-        Set<String> toolsUsed = calls.stream().filter(c -> !c.error()).map(RunToolbox.Call::tool)
-                .collect(Collectors.toSet());
+    private static void validate(JsonMapper mapper, List<Entry> rankings, List<RunToolbox.Call> calls) {
+        Map<UUID, String> candidates = candidates(mapper, calls);
+        Set<UUID> scored = scoredAndQualified(mapper, calls);
+        Set<String> toolsUsed = calls.stream().filter(c -> !c.error()).map(RunToolbox.Call::tool).collect(Collectors.toSet());
         Set<UUID> seen = new HashSet<>();
         for (Entry e : rankings) {
             if (e == null || e.investorId() == null) {
@@ -78,18 +84,20 @@ public final class ModelOutput {
             if (!seen.add(e.investorId())) {
                 throw new Invalid("investor " + e.investorId() + " is listed twice");
             }
-            if (!candidates.contains(e.investorId())) {
+            if (!candidates.containsKey(e.investorId())) {
                 throw new Invalid("investor " + e.investorId() + " is not in the search results");
             }
-            if (!scored(calls, e.investorId())) {
-                throw new Invalid("investor " + e.investorId() + " was never scored with scoreFit");
+            if (!scored.contains(e.investorId())) {
+                throw new Invalid("investor " + e.investorId() + " has no qualifying scoreFit result (never scored, or disqualified)");
             }
-            if (e.explanation() == null || e.explanation().isBlank() || e.explanation().length() > MAX_EXPLANATION) {
-                throw new Invalid("explanation must be 1-" + MAX_EXPLANATION + " characters");
+            text(e.explanation(), "explanation", MAX_EXPLANATION);
+            text(e.dealBrief(), "dealBrief", MAX_BRIEF);
+            List<String> questions = e.suggestedDiligenceQuestions();
+            if (questions == null || questions.size() < MIN_QUESTIONS || questions.size() > MAX_QUESTIONS) {
+                throw new Invalid("suggestedDiligenceQuestions must hold " + MIN_QUESTIONS + " to " + MAX_QUESTIONS + " questions");
             }
-            if (ACTIVE_CONTENT.matcher(e.explanation()).find()) {
-                throw new Invalid("explanation must be plain text: no markup, links or scripts");
-            }
+            questions.forEach(q -> text(q, "each diligence question", MAX_QUESTION));
+            noOtherInvestors(e, candidates);
             if (e.citedTools() == null || e.citedTools().isEmpty()) {
                 throw new Invalid("citedTools must list the tools you used for investor " + e.investorId());
             }
@@ -101,19 +109,67 @@ public final class ModelOutput {
         }
     }
 
-    /** Investor ids that appeared in successful searchInvestorsByMandate results of this run. */
-    private static Set<UUID> candidates(List<RunToolbox.Call> calls) {
-        Set<UUID> ids = new HashSet<>();
-        for (RunToolbox.Call c : calls) {
-            if (c.error() || !c.tool().equals("searchInvestorsByMandate")) continue;
-            Matcher m = UUID_PATTERN.matcher(c.output());
-            while (m.find()) ids.add(UUID.fromString(m.group()));
+    private static void text(String value, String field, int max) {
+        if (value == null || value.isBlank() || value.length() > max) {
+            throw new Invalid(field + " must be 1-" + max + " characters");
         }
-        return ids;
+        if (ACTIVE_CONTENT.matcher(value).find()) {
+            throw new Invalid(field + " must be plain text: no markup, links or scripts");
+        }
     }
 
-    private static boolean scored(List<RunToolbox.Call> calls, UUID investorId) {
-        return calls.stream().anyMatch(c -> !c.error() && c.tool().equals("scoreFit")
-                && c.input().contains(investorId.toString()));
+    /** The brief and questions are shown to that investor: they must never reveal who else is being considered. */
+    private static void noOtherInvestors(Entry e, Map<UUID, String> candidates) {
+        String visible = (e.dealBrief() + " " + String.join(" ", e.suggestedDiligenceQuestions())).toLowerCase();
+        String own = candidates.getOrDefault(e.investorId(), "").toLowerCase();
+        for (Map.Entry<UUID, String> other : candidates.entrySet()) {
+            String name = other.getValue().toLowerCase();
+            if (!other.getKey().equals(e.investorId()) && !name.isBlank() && !name.equals(own) && visible.contains(name)) {
+                throw new Invalid("dealBrief and questions for one investor must not mention another investor");
+            }
+        }
+    }
+
+    /** Investor id and name from every successful search in this run. */
+    private static Map<UUID, String> candidates(JsonMapper mapper, List<RunToolbox.Call> calls) {
+        Map<UUID, String> found = new LinkedHashMap<>();
+        for (RunToolbox.Call c : calls) {
+            if (c.error() || !SEARCH_TOOLS.contains(c.tool())) continue;
+            for (JsonNode hit : readArray(mapper, c.output())) {
+                uuid(hit.path("investorId")).ifPresent(id -> found.put(id, hit.path("name").asString("")));
+            }
+        }
+        return found;
+    }
+
+    private static Set<UUID> scoredAndQualified(JsonMapper mapper, List<RunToolbox.Call> calls) {
+        Set<UUID> ok = new HashSet<>();
+        for (RunToolbox.Call c : calls) {
+            if (c.error() || !c.tool().equals("scoreFit")) continue;
+            for (JsonNode result : readArray(mapper, c.output())) {
+                JsonNode disqualifiers = result.path("breakdown").path("disqualifiers");
+                if (result.path("total").isNumber() && disqualifiers.isArray() && disqualifiers.isEmpty()) {
+                    uuid(result.path("investorId")).ifPresent(ok::add);
+                }
+            }
+        }
+        return ok;
+    }
+
+    private static Iterable<JsonNode> readArray(JsonMapper mapper, String json) {
+        try {
+            JsonNode node = mapper.readTree(json);
+            return node.isArray() ? node.values() : List.of();
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+    }
+
+    private static java.util.Optional<UUID> uuid(JsonNode node) {
+        try {
+            return java.util.Optional.of(UUID.fromString(node.asString("")));
+        } catch (IllegalArgumentException e) {
+            return java.util.Optional.empty();
+        }
     }
 }

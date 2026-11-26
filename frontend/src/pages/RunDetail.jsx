@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api.js';
+import { Breakdown } from '../score.jsx';
 import { Button, ErrorBox, Loading, PageTitle, Status, money, useLoad, when, words } from '../ui.jsx';
 
 const pretty = (text) => {
@@ -48,6 +49,11 @@ export default function RunDetail({ id }) {
           <p className="text-sm">Matched checks: {run.inputFlags.join(', ')}</p>
         </div>
       )}
+      {run.executionMode === 'DEGRADED_DETERMINISTIC' && (
+        <p role="status" className="mb-6 border-l-4 border-flag bg-flag-bg px-4 py-3 text-flag">
+          ▲ Matched without the language model: {run.degradedReason}. Scores are the same Java scores; the text is generated from templates.
+        </p>
+      )}
       {run.status === 'FAILED' && <p role="alert" className="mb-6 border-l-4 border-bad bg-bad-bg px-4 py-3 text-bad">Run failed: {run.error}</p>}
 
       <div className="grid gap-8 lg:grid-cols-[1fr_20rem]">
@@ -67,6 +73,16 @@ export default function RunDetail({ id }) {
                     <div className="h-full origin-left bg-brand" style={{ transform: `scaleX(${r.score / 100})` }} />
                   </div>
                   <details className="mt-2">
+                    <summary className="flex min-h-11 items-center font-medium text-brand">Score breakdown and investor brief</summary>
+                    <div className="space-y-3 pb-2">
+                      <Breakdown breakdown={r.scoreBreakdown} />
+                      {r.dealBrief && <p className="max-w-prose"><b>Brief the investor will see:</b> {r.dealBrief}</p>}
+                      <ul className="list-disc pl-5 text-sm">
+                        {r.suggestedDiligenceQuestions.map((q) => <li key={q}>{q}</li>)}
+                      </ul>
+                    </div>
+                  </details>
+                  <details>
                     <summary className="flex min-h-11 items-center font-medium text-brand">Why this rank</summary>
                     <p className="max-w-prose whitespace-pre-wrap">{r.explanation}</p>
                     <p className="mt-2 flex flex-wrap gap-1.5 text-sm">
@@ -122,7 +138,7 @@ export default function RunDetail({ id }) {
 
         <aside aria-label="Funding need and run facts" className="h-fit space-y-4 border-t-4 border-ink bg-sheet p-4 text-sm">
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
-            {[['Amount', money(need.amount)], ['Still open', money(need.remainingCapacity)], ['Sector', words(need.sector)],
+            {[['Amount', `${money(need.amount)} ${need.currency}`], ['Still open', money(need.remainingCapacity)], ['Stage', need.companyStage ? words(need.companyStage) : '—'], ['Sector', words(need.sector)],
               ['Region', words(need.region)], ['Instrument', words(need.instrument)], ['Risk', words(need.riskLevel)],
               ['Tokens', run.tokensIn == null ? '—' : `${run.tokensIn} in, ${run.tokensOut} out`],
               ['Duration', run.latencyMs == null ? '—' : `${(run.latencyMs / 1000).toFixed(1)} s`],

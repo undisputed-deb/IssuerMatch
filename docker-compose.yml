@@ -49,7 +49,7 @@ services:
   # Throwaway database for the load test only (profile "load"). Never your real database.
   # trust auth is acceptable because the port is bound to 127.0.0.1 and the data is synthetic.
   postgres-load:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17 # PostgreSQL 17 with the vector extension
     profiles: ["load"]
     container_name: issuermatch-pg-load
     ports:
@@ -63,7 +63,7 @@ services:
       retries: 20
 
   postgres:
-    image: postgres:17-alpine
+    image: pgvector/pgvector:pg17 # PostgreSQL 17 with the vector extension
     profiles: ["app"]
     container_name: issuermatch-pg
     environment:

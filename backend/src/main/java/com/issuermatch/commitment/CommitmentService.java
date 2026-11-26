@@ -11,6 +11,7 @@ import com.issuermatch.commitment.risk.RiskFacts;
 import com.issuermatch.commitment.risk.Verdict;
 import com.issuermatch.common.ApiException;
 import com.issuermatch.common.AppMetrics;
+import com.issuermatch.common.Currencies;
 import com.issuermatch.common.NotFoundException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -66,8 +67,9 @@ class CommitmentService {
     private Saved doCreate(UUID actor, CreateRequest r) {
         // Lock the need's row first. From here until commit nobody else can commit to this need, so every rule
         // sees the same capacity and exposure numbers we do. Concurrent commitments to one need queue up.
-        List<NeedRow> needs = db.query("SELECT issuer_id, remaining_capacity FROM funding_needs WHERE id = ? FOR UPDATE",
-                (rs, n) -> new NeedRow(rs.getObject("issuer_id", UUID.class), rs.getBigDecimal("remaining_capacity")), r.needId());
+        List<NeedRow> needs = db.query("SELECT issuer_id, remaining_capacity, currency FROM funding_needs WHERE id = ? FOR UPDATE",
+                (rs, n) -> new NeedRow(rs.getObject("issuer_id", UUID.class), rs.getBigDecimal("remaining_capacity"),
+                        rs.getString("currency")), r.needId());
         if (needs.isEmpty()) {
             throw new NotFoundException("Funding need not found");
         }
@@ -86,7 +88,7 @@ class CommitmentService {
         }
 
         RiskEngine.Outcome outcome = risk.evaluate(new RiskContext(r.needId(), r.investorId(), r.amount(),
-                need.remaining(), mandateRanges(r), new Facts(r, need)));
+                Currencies.toUsd(r.amount(), need.currency()), need.remaining(), mandateRanges(r, need.currency()), new Facts(r, need)));
         String status = switch (outcome.verdict()) {
             case PASS -> "ACCEPTED";
             case FLAG -> "PENDING_REVIEW";
@@ -206,7 +208,7 @@ class CommitmentService {
 
     // ---- helpers ----
 
-    private record NeedRow(UUID issuerId, BigDecimal remaining) {}
+    private record NeedRow(UUID issuerId, BigDecimal remaining, String currency) {}
 
     /**
      * Reserve capacity with one conditional UPDATE (check and change together). With the row already locked
@@ -223,11 +225,14 @@ class CommitmentService {
         return left.get(0);
     }
 
-    /** Ticket ranges of the investor's mandates for this need's sector and region. */
-    private List<RiskContext.TicketRange> mandateRanges(CreateRequest r) {
-        return db.query("SELECT m.min_ticket, m.max_ticket FROM mandates m JOIN funding_needs n"
-                        + " ON n.sector = m.sector AND n.region = m.region WHERE n.id = ? AND m.investor_id = ?",
-                (rs, n) -> new RiskContext.TicketRange(rs.getBigDecimal("min_ticket"), rs.getBigDecimal("max_ticket")),
+    /** Ticket ranges of the investor's mandates for this need's sector and region, in the need's currency. */
+    private List<RiskContext.TicketRange> mandateRanges(CreateRequest r, String needCurrency) {
+        return db.query("SELECT m.min_ticket, m.max_ticket, i.currency FROM mandates m JOIN funding_needs n"
+                        + " ON n.sector = m.sector AND n.region = m.region JOIN investors i ON i.id = m.investor_id"
+                        + " WHERE n.id = ? AND m.investor_id = ?",
+                (rs, n) -> new RiskContext.TicketRange(
+                        Currencies.convert(rs.getBigDecimal("min_ticket"), rs.getString("currency"), needCurrency),
+                        Currencies.convert(rs.getBigDecimal("max_ticket"), rs.getString("currency"), needCurrency)),
                 r.needId(), r.investorId());
     }
 
@@ -243,9 +248,12 @@ class CommitmentService {
 
         @Override
         public BigDecimal exposureToIssuer() {
-            return db.queryForObject("SELECT coalesce(sum(c.amount), 0) FROM commitments c JOIN funding_needs n ON n.id = c.need_id"
-                    + " WHERE n.issuer_id = ? AND c.investor_id = ? AND c.status IN ('ACCEPTED','PENDING_REVIEW')",
-                    BigDecimal.class, need.issuerId(), r.investorId());
+            // one total per currency, then converted: needs of one issuer may raise in different currencies
+            return db.query("SELECT n.currency, sum(c.amount) AS total FROM commitments c JOIN funding_needs n ON n.id = c.need_id"
+                            + " WHERE n.issuer_id = ? AND c.investor_id = ? AND c.status IN ('ACCEPTED','PENDING_REVIEW')"
+                            + " GROUP BY n.currency",
+                    (rs, n) -> Currencies.toUsd(rs.getBigDecimal("total"), rs.getString("currency")), need.issuerId(), r.investorId())
+                    .stream().reduce(BigDecimal.ZERO, BigDecimal::add);
         }
 
         @Override

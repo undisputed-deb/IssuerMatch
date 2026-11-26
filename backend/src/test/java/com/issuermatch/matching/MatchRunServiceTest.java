@@ -44,7 +44,7 @@ class MatchRunServiceTest {
     }
 
     ModelOutput.Entry entry(UUID inv, String text) {
-        return new ModelOutput.Entry(inv, text, List.of("scoreFit"));
+        return new ModelOutput.Entry(inv, text, List.of("scoreFit"), "brief", List.of("a?", "b?", "c?"));
     }
 
     @Test
@@ -71,7 +71,7 @@ class MatchRunServiceTest {
                 "SELECT investor_id, rank, score, explanation FROM match_results WHERE run_id = ? ORDER BY rank", run);
         assertThat(rows).hasSize(2);
         assertThat(rows.get(0).get("investor_id")).isEqualTo(strong);
-        assertThat(((Number) rows.get(0).get("score")).doubleValue()).isEqualTo(100.0);
+        assertThat(((Number) rows.get(0).get("score")).doubleValue()).isEqualTo(75.0);
         assertThat(((Number) rows.get(1).get("score")).doubleValue()).isLessThan(50.0);
         assertThat(rows.get(1).get("explanation")).isEqualTo("Score 99, best ever!"); // text kept, number not trusted
     }
@@ -191,5 +191,37 @@ class MatchRunServiceTest {
         runningSince("10 minutes");
         service.reapStuck(java.time.Duration.ofMinutes(5));
         assertThat(needStatus()).isEqualTo("SUBMITTED");
+    }
+
+    @Test
+    void breakdownBriefQuestionsAndModeAreStoredAndHardConstraintsWinOverTheModel() {
+        givenNeedAndRun();
+        UUID allowed = investor("FINTECH,EUROPE,500000,2000000,MEDIUM");
+        UUID excluded = investor("FINTECH,EUROPE,500000,2000000,MEDIUM");
+        db.update("UPDATE investors SET investor_type = 'PE' WHERE id = ?", excluded);
+        db.update("UPDATE funding_needs SET hard_constraints = '{\"excludedInvestorTypes\":[\"PE\"]}' WHERE id = ?", need);
+        service.claim(run, need);
+        service.complete(run, need, new MatchAgent.Result(List.of(entry(excluded, "model likes it"), entry(allowed, "ok")),
+                new MatchAgent.Run("{}", 1, 1, 1, List.of())), "DEGRADED_DETERMINISTIC", "why");
+
+        assertThat(db.queryForList("SELECT investor_id FROM match_results WHERE run_id = ?", UUID.class, run)).containsExactly(allowed);
+        var r = db.queryForMap("SELECT score_breakdown->>'ticketFit' AS ticket, deal_brief, suggested_diligence_questions->>0 AS q"
+                + " FROM match_results WHERE run_id = ?", run);
+        assertThat(r.get("ticket")).isEqualTo("25.00");
+        assertThat(r.get("deal_brief")).isEqualTo("brief");
+        assertThat(r.get("q")).isEqualTo("a?");
+        assertThat(db.queryForObject("SELECT execution_mode || ':' || degraded_reason FROM match_runs WHERE id = ?", String.class, run))
+                .isEqualTo("DEGRADED_DETERMINISTIC:why");
+    }
+
+    @Test
+    void aRunWhereEveryoneIsDisqualifiedFails() {
+        givenNeedAndRun();
+        UUID only = investor("FINTECH,EUROPE,500000,2000000,MEDIUM");
+        db.update("UPDATE funding_needs SET hard_constraints = '{\"excludedInvestorTypes\":[\"VC\"]}' WHERE id = ?", need);
+        service.claim(run, need);
+        service.complete(run, need, new MatchAgent.Result(List.of(entry(only, "x")), new MatchAgent.Run("{}", 1, 1, 1, List.of())));
+        assertThat(db.queryForObject("SELECT status || ':' || error FROM match_runs WHERE id = ?", String.class, run))
+                .isEqualTo("FAILED:No qualified investors");
     }
 }

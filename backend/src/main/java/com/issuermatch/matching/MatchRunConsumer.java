@@ -1,7 +1,6 @@
 package com.issuermatch.matching;
 
 import com.issuermatch.matching.agent.AgentFailure;
-import com.issuermatch.matching.agent.MatchAgent;
 import com.issuermatch.messaging.EventEnvelope;
 import com.issuermatch.messaging.EventParser;
 import com.issuermatch.messaging.Topics;
@@ -24,12 +23,12 @@ class MatchRunConsumer {
 
     private final EventParser parser;
     private final MatchRunService runs;
-    private final MatchAgent agent;
+    private final MatchExecutor executor;
 
-    MatchRunConsumer(EventParser parser, MatchRunService runs, MatchAgent agent) {
+    MatchRunConsumer(EventParser parser, MatchRunService runs, MatchExecutor executor) {
         this.parser = parser;
         this.runs = runs;
-        this.agent = agent;
+        this.executor = executor;
     }
 
     @KafkaListener(topics = Topics.MATCH_REQUESTED)
@@ -43,7 +42,8 @@ class MatchRunConsumer {
             return;
         }
         try {
-            runs.complete(runId, needId, agent.match(needId));
+            MatchExecutor.Outcome outcome = executor.execute(needId);
+            runs.complete(runId, needId, outcome.result(), outcome.mode().name(), outcome.degradedReason());
         } catch (AgentFailure e) {
             log.warn("Match run {} failed: {}", runId, e.getMessage());
             runs.fail(runId, needId, e.getMessage());

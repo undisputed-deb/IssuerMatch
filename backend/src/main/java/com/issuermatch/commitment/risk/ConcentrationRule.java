@@ -21,9 +21,9 @@ class ConcentrationRule implements RiskRule {
     @Override
     public Decision evaluate(RiskContext c, Map<String, BigDecimal> p) {
         BigDecimal existing = c.facts().exposureToIssuer();
-        BigDecimal total = existing.add(c.amount());
+        BigDecimal total = existing.add(c.amountUsd());
         String detail = "exposure to this issuer would be " + total.toPlainString()
-                + " (already " + existing.toPlainString() + " + " + c.amount().toPlainString() + ")";
+                + " USD (already " + existing.toPlainString() + " + " + c.amountUsd().toPlainString() + ")";
         if (total.compareTo(p.get("blockAbove")) > 0) {
             return Decision.block("Concentration too high: " + detail + ", limit " + p.get("blockAbove").toPlainString());
         }

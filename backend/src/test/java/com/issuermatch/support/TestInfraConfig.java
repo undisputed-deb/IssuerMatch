@@ -16,7 +16,9 @@ public class TestInfraConfig {
     @Bean
     @ServiceConnection
     PostgreSQLContainer postgres() {
-        return new PostgreSQLContainer("postgres:17-alpine");
+        // pgvector ships PostgreSQL 17 plus the "vector" extension
+        return new PostgreSQLContainer(org.testcontainers.utility.DockerImageName.parse("pgvector/pgvector:pg17")
+                .asCompatibleSubstituteFor("postgres"));
     }
 
     /**
@@ -41,6 +43,13 @@ public class TestInfraConfig {
     @Primary
     FakeSupabaseAuthClient fakeSupabaseAuthClient() {
         return new FakeSupabaseAuthClient();
+    }
+
+    /** Deterministic embeddings: no test calls the real embedding API. */
+    @Bean
+    @Primary
+    FakeEmbeddingClient fakeEmbeddingClient() {
+        return new FakeEmbeddingClient();
     }
 
     @Bean

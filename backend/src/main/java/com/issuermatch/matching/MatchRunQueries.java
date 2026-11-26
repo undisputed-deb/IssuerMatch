@@ -20,7 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 class MatchRunQueries {
 
-    private static final String COLUMNS = "id, need_id, status, tokens_in, tokens_out, latency_ms, error, reviewed_at, created_at, input_flags";
+    private static final String COLUMNS = "id, need_id, status, tokens_in, tokens_out, latency_ms, error, reviewed_at, created_at, input_flags, execution_mode, degraded_reason";
 
     private final JdbcTemplate db;
     private final JsonMapper json;
@@ -54,21 +54,27 @@ class MatchRunQueries {
 
     List<Result> results(UUID runId) {
         summary(runId); // 404 for an unknown run
-        return db.query("SELECT r.rank, r.investor_id, i.name, r.score, r.explanation, r.cited_tools::text AS cited"
+        return db.query("SELECT r.id, r.rank, r.investor_id, i.name, r.score, r.explanation, r.cited_tools::text AS cited,"
+                        + " r.score_breakdown::text AS breakdown, r.deal_brief, r.suggested_diligence_questions::text AS questions"
                         + " FROM match_results r JOIN investors i ON i.id = r.investor_id WHERE r.run_id = ? ORDER BY r.rank",
                 (rs, n) -> {
-                    JsonNode cited = json.readTree(rs.getString("cited"));
-                    List<String> tools = cited.valueStream().map(JsonNode::asString).toList();
-                    return new Result(rs.getInt("rank"), rs.getObject("investor_id", UUID.class), rs.getString("name"),
-                            rs.getBigDecimal("score"), rs.getString("explanation"), tools);
+                    String breakdown = rs.getString("breakdown");
+                    return new Result(rs.getObject("id", UUID.class), rs.getInt("rank"), rs.getObject("investor_id", UUID.class),
+                            rs.getString("name"), rs.getBigDecimal("score"), rs.getString("explanation"), strings(rs.getString("cited")),
+                            breakdown == null ? null : json.readTree(breakdown), rs.getString("deal_brief"),
+                            strings(rs.getString("questions")));
                 }, runId);
+    }
+
+    private List<String> strings(String jsonArray) {
+        return json.readTree(jsonArray).valueStream().map(JsonNode::asString).toList();
     }
 
     private static Summary summary(ResultSet rs) throws SQLException {
         return new Summary(rs.getObject("id", UUID.class), rs.getObject("need_id", UUID.class), rs.getString("status"),
                 (Integer) rs.getObject("tokens_in"), (Integer) rs.getObject("tokens_out"), (Integer) rs.getObject("latency_ms"),
                 rs.getString("error"), instant(rs, "reviewed_at"), instant(rs, "created_at"),
-                List.of((String[]) rs.getArray("input_flags").getArray()));
+                List.of((String[]) rs.getArray("input_flags").getArray()), rs.getString("execution_mode"), rs.getString("degraded_reason"));
     }
 
     private static Instant instant(ResultSet rs, String column) throws SQLException {

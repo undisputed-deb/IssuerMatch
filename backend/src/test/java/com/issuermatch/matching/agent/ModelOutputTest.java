@@ -13,15 +13,24 @@ class ModelOutputTest {
     final JsonMapper mapper = JsonMapper.builder().build();
     final UUID inv = UUID.randomUUID();
 
+    final UUID rival = UUID.randomUUID();
+
+    static String hit(UUID id, String name) {
+        return "{\"investorId\":\"" + id + "\",\"name\":\"" + name + "\"}";
+    }
+
+    static String scored(UUID id, String disqualifiers) {
+        return "{\"investorId\":\"" + id + "\",\"total\":90,\"breakdown\":{\"disqualifiers\":" + disqualifiers + "}}";
+    }
+
     List<RunToolbox.Call> goodCalls() {
         return List.of(
-                new RunToolbox.Call("searchInvestorsByMandate", "{}", "[{\"investorId\":\"" + inv + "\",\"name\":\"X\"}]", false, 1),
-                new RunToolbox.Call("scoreFit", "{\"needId\":\"" + UUID.randomUUID() + "\",\"investorId\":\"" + inv + "\"}", "{\"total\":90}", false, 1));
+                new RunToolbox.Call("searchInvestorsByMandate", "{}", "[" + hit(inv, "Alpha Capital") + "," + hit(rival, "Rival Partners") + "]", false, 1),
+                new RunToolbox.Call("scoreFit", "{}", "[" + scored(inv, "[]") + "," + scored(rival, "[]") + "]", false, 1));
     }
 
     String answer(String investorId, String explanation, String cited) {
-        return "{\"rankings\":[{\"investorId\":\"" + investorId + "\",\"explanation\":\"" + explanation
-                + "\",\"citedTools\":" + cited + "}]}";
+        return Answers.rankings(Answers.entry(investorId, explanation, cited));
     }
 
     List<ModelOutput.Entry> parse(String text, List<RunToolbox.Call> calls) {
@@ -74,7 +83,7 @@ class ModelOutputTest {
     @Test
     void ignoresFailedToolCallsWhenCheckingGrounding() {
         List<RunToolbox.Call> failedScore = List.of(goodCalls().get(0),
-                new RunToolbox.Call("scoreFit", "{\"investorId\":\"" + inv + "\"}", "{\"error\":\"x\"}", true, 1));
+                new RunToolbox.Call("scoreFit", "{}", "{\"error\":\"x\"}", true, 1));
         assertThatThrownBy(() -> parse(answer(inv.toString(), "x", "[\"scoreFit\"]"), failedScore))
                 .isInstanceOf(ModelOutput.Invalid.class);
     }
@@ -97,10 +106,10 @@ class ModelOutputTest {
 
     @Test
     void rejectsDuplicateInvestorsAndTooManyRankings() {
-        String one = "{\"investorId\":\"" + inv + "\",\"explanation\":\"x\",\"citedTools\":[\"scoreFit\"]}";
+        String one = Answers.entry(inv, "x", "[\"scoreFit\"]");
         assertThatThrownBy(() -> parse("{\"rankings\":[" + one + "," + one + "]}", goodCalls())).isInstanceOf(ModelOutput.Invalid.class);
-        String six = String.join(",", java.util.Collections.nCopies(6, one));
-        assertThatThrownBy(() -> parse("{\"rankings\":[" + six + "]}", goodCalls())).isInstanceOf(ModelOutput.Invalid.class);
+        String eleven = String.join(",", java.util.Collections.nCopies(11, one));
+        assertThatThrownBy(() -> parse("{\"rankings\":[" + eleven + "]}", goodCalls())).isInstanceOf(ModelOutput.Invalid.class);
     }
 
     @Test
@@ -117,5 +126,49 @@ class ModelOutputTest {
     void ordinaryComparisonsAndSymbolsAreStillPlainText() {
         assertThat(parse(answer(inv.toString(), "Ticket 1M < max 2M, fit > 90%. Sector & region match (see score).", "[\"scoreFit\"]"), goodCalls()))
                 .hasSize(1);
+    }
+
+    // ---- deal brief, diligence questions, disqualification ----
+
+    String custom(String brief, String questions) {
+        return Answers.rankings("{\"investorId\":\"" + inv + "\",\"explanation\":\"x\",\"citedTools\":[\"scoreFit\"],"
+                + "\"dealBrief\":" + brief + ",\"suggestedDiligenceQuestions\":" + questions + "}");
+    }
+
+    static final String THREE = "[\"a?\",\"b?\",\"c?\"]";
+
+    @Test
+    void requiresABriefAndThreeToFiveQuestions() {
+        assertThat(parse(custom("\"Good fit.\"", THREE), goodCalls())).hasSize(1);
+        for (String[] bad : new String[][] {{"\"\"", THREE}, {"null", THREE}, {"\"" + "x".repeat(801) + "\"", THREE},
+                {"\"b\"", "[\"a?\",\"b?\"]"}, {"\"b\"", "[\"1\",\"2\",\"3\",\"4\",\"5\",\"6\"]"},
+                {"\"b\"", "null"}, {"\"b\"", "[\"a?\",\"\",\"c?\"]"}, {"\"see https://evil.example\"", THREE}}) {
+            assertThatThrownBy(() -> parse(custom(bad[0], bad[1]), goodCalls())).as(bad[0] + bad[1]).isInstanceOf(ModelOutput.Invalid.class);
+        }
+    }
+
+    @Test
+    void textShownToOneInvestorMayNotNameAnother() {
+        assertThatThrownBy(() -> parse(custom("\"Stronger than rival partners.\"", THREE), goodCalls()))
+                .isInstanceOf(ModelOutput.Invalid.class).hasMessageContaining("another investor");
+        assertThatThrownBy(() -> parse(custom("\"ok\"", "[\"Is Rival Partners involved?\",\"b?\",\"c?\"]"), goodCalls()))
+                .isInstanceOf(ModelOutput.Invalid.class);
+        assertThat(parse(custom("\"Alpha Capital fits well.\"", THREE), goodCalls())).hasSize(1); // its own name is fine
+    }
+
+    @Test
+    void aDisqualifiedInvestorCannotBeRanked() {
+        List<RunToolbox.Call> calls = List.of(goodCalls().get(0),
+                new RunToolbox.Call("scoreFit", "{}", "[" + scored(inv, "[\"excluded type\"]") + "]", false, 1));
+        assertThatThrownBy(() -> parse(answer(inv.toString(), "x", "[\"scoreFit\"]"), calls))
+                .isInstanceOf(ModelOutput.Invalid.class).hasMessageContaining("disqualified");
+    }
+
+    @Test
+    void aSemanticSearchHitIsAValidCandidate() {
+        List<RunToolbox.Call> calls = List.of(
+                new RunToolbox.Call("searchInvestorsByThesisSemantic", "{}", "[" + hit(inv, "Alpha Capital") + "]", false, 1),
+                new RunToolbox.Call("scoreFit", "{}", "[" + scored(inv, "[]") + "]", false, 1));
+        assertThat(parse(answer(inv.toString(), "x", "[\"searchInvestorsByThesisSemantic\"]"), calls)).hasSize(1);
     }
 }

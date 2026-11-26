@@ -48,10 +48,9 @@ class MatchAgentRetryTest {
 
     /** What a well-behaved model does: search, score, then answer. */
     String gather(List<ToolCallback> t) {
-        FakeLlmClient.callTool(t, "searchInvestorsByMandate", "{\"sector\":\"FINTECH\",\"region\":\"EUROPE\",\"ticketSize\":1234567}");
-        FakeLlmClient.callTool(t, "scoreFit", "{\"needId\":\"" + needId + "\",\"investorId\":\"" + investorId + "\"}");
-        return "{\"rankings\":[{\"investorId\":\"" + investorId + "\",\"explanation\":\"Exact ticket and sector fit.\","
-                + "\"citedTools\":[\"scoreFit\",\"searchInvestorsByMandate\"]}]}";
+        FakeLlmClient.callTool(t, "searchInvestorsByMandate", "{\"sector\":\"FINTECH\",\"region\":\"EUROPE\",\"ticketSizeUsd\":1234567}");
+        FakeLlmClient.callTool(t, "scoreFit", "{\"needId\":\"" + needId + "\",\"investorIds\":[\"" + investorId + "\"]}");
+        return answerFor();
     }
 
     MatchAgent agent(FakeLlmClient llm) {
@@ -146,8 +145,7 @@ class MatchAgentRetryTest {
     }
 
     String answerFor() {
-        return "{\"rankings\":[{\"investorId\":\"" + investorId + "\",\"explanation\":\"Exact fit.\","
-                + "\"citedTools\":[\"scoreFit\",\"searchInvestorsByMandate\"]}]}";
+        return Answers.rankings(Answers.entry(investorId, "Exact fit.", "[\"scoreFit\",\"searchInvestorsByMandate\"]"));
     }
 
     @Test

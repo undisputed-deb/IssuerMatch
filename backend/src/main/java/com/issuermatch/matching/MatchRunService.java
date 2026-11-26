@@ -4,7 +4,8 @@ import com.issuermatch.audit.AuditService;
 import com.issuermatch.common.AppMetrics;
 import com.issuermatch.matching.agent.MatchAgent;
 import com.issuermatch.matching.agent.PromptInjectionDetector;
-import com.issuermatch.matching.agent.MatchingTools;
+import com.issuermatch.matching.scoring.ScoreBreakdown;
+import com.issuermatch.matching.scoring.ScoringService;
 import com.issuermatch.matching.agent.ModelOutput;
 import com.issuermatch.messaging.OutboxService;
 import com.issuermatch.messaging.Topics;
@@ -34,18 +35,18 @@ public class MatchRunService {
 
     private final JdbcTemplate db;
     private final JsonMapper json;
-    private final MatchingTools tools;
+    private final ScoringService scoring;
     private final OutboxService outbox;
     private final AuditService audit;
     private final AppMetrics metrics;
 
-    MatchRunService(JdbcTemplate db, JsonMapper json, MatchingTools tools, OutboxService outbox, AuditService audit,
+    MatchRunService(JdbcTemplate db, JsonMapper json, ScoringService scoring, OutboxService outbox, AuditService audit,
                     AppMetrics metrics) {
         this.metrics = metrics;
         this.audit = audit;
         this.db = db;
         this.json = json;
-        this.tools = tools;
+        this.scoring = scoring;
         this.outbox = outbox;
     }
 
@@ -78,32 +79,57 @@ public class MatchRunService {
 
     @Transactional
     public void complete(UUID runId, UUID needId, MatchAgent.Result result) {
-        record Scored(ModelOutput.Entry entry, BigDecimal score) {}
+        complete(runId, needId, result, "AGENT", null);
+    }
+
+    /** @param mode AGENT or DEGRADED_DETERMINISTIC */
+    @Transactional
+    public void complete(UUID runId, UUID needId, MatchAgent.Result result, String mode, String degradedReason) {
+        record Scored(ModelOutput.Entry entry, ScoreBreakdown breakdown) {}
         List<Scored> ranked = result.rankings().stream()
-                .map(e -> new Scored(e, tools.scoreFit(needId, e.investorId()).total()))
-                .sorted(Comparator.comparing(Scored::score).reversed()
+                .map(e -> new Scored(e, scoring.score(needId, e.investorId())))
+                .filter(s -> s.breakdown().qualified()) // a hard constraint always wins over the model's opinion
+                .sorted(Comparator.<Scored, BigDecimal>comparing(s -> s.breakdown().total()).reversed()
                         .thenComparing(s -> s.entry().investorId().toString())) // ties: stable and reproducible
                 .toList();
+        if (ranked.isEmpty()) {
+            fail(runId, needId, "No qualified investors");
+            return;
+        }
 
         MatchAgent.Run run = result.run();
         // Only a RUNNING run can complete. If the reaper already failed it, a late finish must not resurrect it.
         int changed = db.update("UPDATE match_runs SET status = 'PENDING_REVIEW', tokens_in = ?, tokens_out = ?,"
-                        + " latency_ms = ?, tool_calls = ?::jsonb WHERE id = ? AND status = 'RUNNING'",
+                        + " latency_ms = ?, tool_calls = ?::jsonb, execution_mode = ?, degraded_reason = ?"
+                        + " WHERE id = ? AND status = 'RUNNING'",
                 run.tokensIn(), run.tokensOut(), (int) Math.min(run.latencyMs(), Integer.MAX_VALUE),
-                json.writeValueAsString(run.toolCalls()), runId);
+                json.writeValueAsString(run.toolCalls()), mode, degradedReason, runId);
         if (changed == 0) {
             log.warn("Run {} finished after it was no longer RUNNING (reaped?). Result discarded.", runId);
             return;
         }
         int rank = 1;
         for (Scored s : ranked) {
-            db.update("INSERT INTO match_results(run_id, investor_id, rank, score, explanation, cited_tools)"
-                            + " VALUES (?,?,?,?,?,?::jsonb)",
-                    runId, s.entry().investorId(), rank++, s.score(), s.entry().explanation(),
-                    json.writeValueAsString(s.entry().citedTools()));
+            db.update("INSERT INTO match_results(run_id, investor_id, rank, score, explanation, cited_tools, score_breakdown,"
+                            + " deal_brief, suggested_diligence_questions) VALUES (?,?,?,?,?,?::jsonb,?::jsonb,?,?::jsonb)",
+                    runId, s.entry().investorId(), rank++, s.breakdown().total(), s.entry().explanation(),
+                    json.writeValueAsString(s.entry().citedTools()), json.writeValueAsString(s.breakdown()),
+                    s.entry().dealBrief(), json.writeValueAsString(s.entry().suggestedDiligenceQuestions()));
         }
+        flagSuspiciousTheses(runId, ranked.stream().map(s -> s.entry().investorId()).toList());
         announce(runId, needId, "PENDING_REVIEW", ranked.size());
         metrics.matchFinished("PENDING_REVIEW", Duration.ofMillis(run.latencyMs()), run.tokensIn(), run.tokensOut());
+    }
+
+    /** Investor theses are untrusted text the model reads: tell the reviewer if a ranked one looks like instructions. */
+    private void flagSuspiciousTheses(UUID runId, List<UUID> investorIds) {
+        boolean suspicious = investorIds.stream().anyMatch(id -> {
+            String thesis = db.queryForObject("SELECT coalesce(long_thesis_description, '') FROM investors WHERE id = ?", String.class, id);
+            return !PromptInjectionDetector.detect(thesis).isEmpty();
+        });
+        if (suspicious) {
+            db.update("UPDATE match_runs SET input_flags = array_append(input_flags, 'investor-thesis') WHERE id = ?", runId);
+        }
     }
 
     /** @param message safe to store and show (no provider details, no secrets) */

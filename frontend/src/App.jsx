@@ -3,6 +3,7 @@ import { api, currentUser, setSignedOutHandler, signOut } from './api.js';
 import { ErrorBox, Loading, useLoad } from './ui.jsx';
 import Company from './pages/Company.jsx';
 import DeadLetters from './pages/DeadLetters.jsx';
+import InvestorDeals from './pages/InvestorDeals.jsx';
 import Login from './pages/Login.jsx';
 import Needs from './pages/Needs.jsx';
 import NewNeed from './pages/NewNeed.jsx';
@@ -107,9 +108,7 @@ function InvestorArea({ user }) {
       {profile.loading && <Loading />}
       <ErrorBox error={profile.error} onRetry={profile.reload} />
       {profile.data && active === 'profile' && <Profile profile={current} onSaved={(p) => { setSaved(p); window.location.hash = '/profile'; }} />}
-      {profile.data && active === 'deals' && (
-        <Needs title="Matched deals" empty="No deals yet. A deal appears here after our review team approves a match with your firm." />
-      )}
+      {profile.data && active === 'deals' && <InvestorDeals />}
     </Shell>
   );
 }

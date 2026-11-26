@@ -114,6 +114,7 @@ export const api = {
   submitNeed: (need) => request('/funding-needs', { method: 'POST', body: need }),
   rematch: (id) => request(`/funding-needs/${id}/match`, { method: 'POST' }),
   runs: (page = 0) => request(`/match-runs?size=20&page=${page}`),
+  investorMatches: () => request('/investor/matches'),
   run: (id) => request(`/match-runs/${id}`),
   results: (id) => request(`/match-runs/${id}/results`),
   review: (id, approve) => request(`/match-runs/${id}/${approve ? 'approve' : 'reject'}`, { method: 'POST' }),

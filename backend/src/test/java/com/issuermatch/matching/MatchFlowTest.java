@@ -45,7 +45,7 @@ class MatchFlowTest {
         if (weak != null) db.update("DELETE FROM investors WHERE id = ?", weak);
     }
 
-    /** Both investors fit the exact ticket. strong scores 100, weak scores 85 (risk one step off, no EQUITY). */
+    /** Both investors fit the exact ticket. strong scores 75, weak 65 (risk one step off, no EQUITY). */
     void givenIssuerAndTwoInvestors(long ticket) {
         issuerId = db.queryForObject("INSERT INTO issuers(name,sector,region,owner_user_id) VALUES (?,'FINTECH','EUROPE',?) RETURNING id",
                 UUID.class, "Flow " + UUID.randomUUID(), UUID.randomUUID());
@@ -75,14 +75,13 @@ class MatchFlowTest {
         Matcher m = Pattern.compile("id=([0-9a-f-]{36})").matcher(userPrompt);
         assertThat(m.find()).isTrue();
         String needId = m.group(1);
-        FakeLlmClient.callTool(t, "searchInvestorsByMandate", "{\"sector\":\"FINTECH\",\"region\":\"EUROPE\",\"ticketSize\":" + ticket + "}");
-        for (UUID inv : List.of(weak, strong)) {
-            FakeLlmClient.callTool(t, "scoreFit", "{\"needId\":\"" + needId + "\",\"investorId\":\"" + inv + "\"}");
-        }
+        FakeLlmClient.callTool(t, "searchInvestorsByMandate", "{\"sector\":\"FINTECH\",\"region\":\"EUROPE\",\"ticketSizeUsd\":" + ticket + "}");
+        FakeLlmClient.callTool(t, "scoreFit", "{\"needId\":\"" + needId + "\",\"investorIds\":[\"" + weak + "\",\"" + strong + "\"]}");
         FakeLlmClient.callTool(t, "getMarketContext", "{\"sector\":\"FINTECH\"}");
-        String entry = "{\"investorId\":\"%s\",\"explanation\":\"%s\",\"citedTools\":[\"scoreFit\",\"searchInvestorsByMandate\"]}";
-        return new LlmResult("{\"rankings\":[" + entry.formatted(weak, "Risk is one step off.") + ","
-                + entry.formatted(strong, "Exact sector, region, ticket and risk fit.") + "]}", 480, 120);
+        String cited = "[\"scoreFit\",\"searchInvestorsByMandate\"]";
+        return new LlmResult(com.issuermatch.matching.agent.Answers.rankings(
+                com.issuermatch.matching.agent.Answers.entry(weak, "Risk is one step off.", cited),
+                com.issuermatch.matching.agent.Answers.entry(strong, "Exact sector, region, ticket and risk fit.", cited)), 480, 120);
     }
 
     String awaitRun(String needId, String status) {
@@ -107,17 +106,17 @@ class MatchFlowTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].rank").value(1))
                 .andExpect(jsonPath("$[0].investorId").value(strong.toString()))
-                .andExpect(jsonPath("$[0].score").value(100.0))
+                .andExpect(jsonPath("$[0].score").value(75.0))
                 .andExpect(jsonPath("$[0].citedTools[0]").value("scoreFit"))
                 .andExpect(jsonPath("$[1].investorId").value(weak.toString()))
-                .andExpect(jsonPath("$[1].score").value(85.0));
+                .andExpect(jsonPath("$[1].score").value(65.0));
 
         // explainability: every tool call is on the run, with usage and latency
         mvc.perform(get("/match-runs/" + runId))
                 .andExpect(jsonPath("$.run.status").value("PENDING_REVIEW"))
                 .andExpect(jsonPath("$.run.tokensIn").value(480))
                 .andExpect(jsonPath("$.run.tokensOut").value(120))
-                .andExpect(jsonPath("$.toolCalls.length()").value(4))
+                .andExpect(jsonPath("$.toolCalls.length()").value(3))
                 .andExpect(jsonPath("$.toolCalls[0].tool").value("searchInvestorsByMandate"));
 
         // the agent cannot approve; the need is not matched until a human says so
@@ -153,19 +152,21 @@ class MatchFlowTest {
     }
 
     @Test
-    void aModelThatKeepsFailingValidationEndsAsAFailedRunWithNoResults() throws Exception {
+    void aModelThatKeepsFailingValidationFallsBackToDeterministicMatching() throws Exception {
         long ticket = 7_654_323;
         givenIssuerAndTwoInvestors(ticket);
         fake.when(p -> p.contains("amount=" + ticket), (s, u, t) -> new LlmResult("I refuse to answer in JSON.", 5, 5));
 
         String needId = submit(ticket);
-        String runId = awaitRun(needId, "FAILED");
+        String runId = awaitRun(needId, "PENDING_REVIEW"); // the deal is not dropped
 
         mvc.perform(get("/match-runs/" + runId))
-                .andExpect(jsonPath("$.run.status").value("FAILED"))
-                .andExpect(jsonPath("$.run.error").value("Model output invalid after one retry"));
-        mvc.perform(get("/match-runs/" + runId + "/results")).andExpect(jsonPath("$.length()").value(0));
-        mvc.perform(post("/match-runs/" + runId + "/approve")).andExpect(status().isConflict()); // nothing to approve
+                .andExpect(jsonPath("$.run.executionMode").value("DEGRADED_DETERMINISTIC"))
+                .andExpect(jsonPath("$.run.degradedReason").value("Model output invalid after one retry"));
+        mvc.perform(get("/match-runs/" + runId + "/results"))
+                .andExpect(jsonPath("$[0].explanation").value(org.hamcrest.Matchers.containsString("without the language model")))
+                .andExpect(jsonPath("$[0].dealBrief").isNotEmpty())
+                .andExpect(jsonPath("$[0].suggestedDiligenceQuestions.length()").value(3));
     }
 
     @Test
@@ -187,15 +188,19 @@ class MatchFlowTest {
     void afterAFailedRunTheOwnerCanAskForMatchingAgain() throws Exception {
         long ticket = 7_654_324;
         givenIssuerAndTwoInvestors(ticket);
-        var attempts = new java.util.concurrent.atomic.AtomicInteger();
-        // the first run (two model calls) returns garbage, later calls behave
-        fake.when(p -> p.contains("amount=" + ticket), (s, u, t) -> attempts.incrementAndGet() <= 2
-                ? new LlmResult("no json here", 1, 1) : goodAnswer(u, t, ticket));
-
-        String needId = submit(ticket);
+        // nobody qualifies: the issuer excludes the only investor type there is, so even the fallback has nothing
+        fake.when(p -> p.contains("amount=" + ticket), (s, u, t) -> new LlmResult("no json here", 1, 1));
+        db.update("UPDATE investors SET investor_type = 'PE' WHERE id IN (?, ?)", strong, weak);
+        String res = mvc.perform(post("/funding-needs").contentType(MediaType.APPLICATION_JSON).content(
+                        "{\"issuerId\":\"" + issuerId + "\",\"title\":\"Flow\",\"description\":\"d\",\"sector\":\"FINTECH\",\"region\":\"EUROPE\","
+                                + "\"amount\":" + ticket + ",\"instrument\":\"EQUITY\",\"riskLevel\":\"MEDIUM\","
+                                + "\"hardConstraints\":{\"excludedInvestorTypes\":[\"PE\",\"VC\",\"PRIVATE_CREDIT\",\"FAMILY_OFFICE\",\"CORPORATE_VC\",\"ANGEL_SYNDICATE\"]}}"))
+                .andExpect(status().isAccepted()).andReturn().getResponse().getContentAsString();
+        String needId = res.replaceAll(".*?\"id\":\"([^\"]+)\".*", "$1");
         awaitRun(needId, "FAILED");
         assertThat(db.queryForObject("SELECT status FROM funding_needs WHERE id = ?::uuid", String.class, needId)).isEqualTo("SUBMITTED");
 
+        db.update("UPDATE funding_needs SET hard_constraints = '{}' WHERE id = ?::uuid", needId); // the issuer relaxes the rule
         mvc.perform(post(rematchPath(needId))).andExpect(status().isAccepted());
         await().atMost(Duration.ofSeconds(30)).until(() -> db.queryForObject(
                 "SELECT count(*) FROM match_runs WHERE need_id = ?::uuid AND status = 'PENDING_REVIEW'", Integer.class, needId) == 1);
@@ -236,8 +241,8 @@ class MatchFlowTest {
         long ticket = 7_654_326;
         givenIssuerAndTwoInvestors(ticket);
         fake.when(p -> p.contains("amount=" + ticket), (s, u, t) -> {
-            assertThat(t).extracting(c -> c.getToolDefinition().name())
-                    .containsExactlyInAnyOrder("searchInvestorsByMandate", "getInvestorHistory", "getMarketContext", "scoreFit");
+            assertThat(t).extracting(c -> c.getToolDefinition().name()).containsExactlyInAnyOrder("searchInvestorsByMandate",
+                    "searchInvestorsByThesisSemantic", "getInvestorHistory", "getMarketContext", "scoreFit");
             assertThat(u.split("</funding_need_description>", -1)).hasSize(2); // the text could not close its fence
             return goodAnswer(u, t, ticket);
         });

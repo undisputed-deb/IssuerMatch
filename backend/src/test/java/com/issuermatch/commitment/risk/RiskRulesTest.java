@@ -27,7 +27,7 @@ class RiskRulesTest {
     }
 
     static RiskContext ctx(long amount, long remaining, List<TicketRange> ranges, Facts facts) {
-        return new RiskContext(UUID.randomUUID(), UUID.randomUUID(), n(amount), n(remaining), ranges, facts);
+        return new RiskContext(UUID.randomUUID(), UUID.randomUUID(), n(amount), n(amount), n(remaining), ranges, facts);
     }
 
     static RiskContext ctx(long amount) {
