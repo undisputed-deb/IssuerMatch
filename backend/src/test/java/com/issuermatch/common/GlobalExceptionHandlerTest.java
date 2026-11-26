@@ -29,6 +29,19 @@ class GlobalExceptionHandlerTest {
     @RestController
     static class Probe {
         @GetMapping("/probe/boom") String boom() { throw new IllegalStateException("secret SQL detail"); }
+        @GetMapping("/probe/db-down") String dbDown() { throw new org.springframework.transaction.CannotCreateTransactionException("jdbc secret host"); }
+        @GetMapping("/probe/db-lost") String dbLost() { throw new org.springframework.dao.DataAccessResourceFailureException("connection to 10.0.0.1 refused"); }
+        @GetMapping("/probe/db-dropped") String dbDropped() {
+            throw new org.springframework.orm.jpa.JpaSystemException(new RuntimeException("Unable to rollback",
+                    new java.sql.SQLException("This connection has been closed.", "08003")));
+        }
+        @GetMapping("/probe/db-shutdown") String dbShutdown() {
+            throw new RuntimeException(new java.sql.SQLException("terminating connection due to administrator command", "57P01"));
+        }
+        @GetMapping("/probe/db-pool-closed") String poolClosed() { // the exact shape chaos.sh produced
+            throw new org.springframework.orm.jpa.JpaSystemException(new RuntimeException("Unable to rollback against JDBC Connection",
+                    new java.sql.SQLException("Connection is closed")));
+        }
         @GetMapping("/probe/missing") String missing() { throw new NotFoundException("Issuer not found"); }
         @PostMapping("/probe/validate") String validate(@Valid @RequestBody Body b) { return "ok"; }
     }
@@ -79,5 +92,16 @@ class GlobalExceptionHandlerTest {
         mvc.perform(post("/health"))
                 .andExpect(status().isMethodNotAllowed())
                 .andExpect(jsonPath("$.error.code").value("METHOD_NOT_ALLOWED"));
+    }
+
+    @Test
+    void anUnreachableDatabaseIs503WithRetryAfterAndNoDetails() throws Exception {
+        for (String path : new String[] {"/probe/db-down", "/probe/db-lost", "/probe/db-dropped", "/probe/db-shutdown", "/probe/db-pool-closed"}) {
+            mvc.perform(get(path))
+                    .andExpect(status().isServiceUnavailable())
+                    .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Retry-After", "5"))
+                    .andExpect(jsonPath("$.error.code").value("SERVICE_UNAVAILABLE"))
+                    .andExpect(jsonPath("$.error.message").value("Service temporarily unavailable"));
+        }
     }
 }

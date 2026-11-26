@@ -3,6 +3,7 @@ package com.issuermatch.common;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.core.PropertyReferenceException;
 import org.springframework.http.HttpHeaders;
@@ -10,6 +11,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.transaction.CannotCreateTransactionException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -57,6 +59,23 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return body(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "Invalid sort property");
     }
 
+    /** SQLState class 08 = connection failure; 57P01-57P03 = the server is shutting down or not accepting connections. */
+    private static boolean isLostConnection(Throwable e) {
+        for (Throwable t = e; t != null && t != t.getCause(); t = t.getCause()) {
+            if (t instanceof java.sql.SQLException sql) {
+                String state = sql.getSQLState();
+                if (state != null && (state.startsWith("08") || state.startsWith("57P0"))) {
+                    return true;
+                }
+                // the connection pool's own answer after it has thrown a broken connection away (seen in chaos.sh)
+                if (state == null && "Connection is closed".equals(sql.getMessage())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private static final java.util.regex.Pattern CONSTRAINT = java.util.regex.Pattern.compile("constraint \"(\\w+)\"");
 
     private static String describe(Throwable cause) {
@@ -65,8 +84,23 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return "SQLState=" + state + " constraint=" + (name.find() ? name.group(1) : "?");
     }
 
+    /** The database cannot be reached: say so (503, retry shortly) instead of a generic 500. */
+    @ExceptionHandler({CannotCreateTransactionException.class, DataAccessResourceFailureException.class})
+    ResponseEntity<ErrorResponse> databaseUnavailable(Exception e) {
+        return unavailable(e);
+    }
+
+    private ResponseEntity<ErrorResponse> unavailable(Exception e) {
+        log.error("Database unavailable: {}", e.getClass().getSimpleName());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).header(HttpHeaders.RETRY_AFTER, "5")
+                .body(ErrorResponse.of("SERVICE_UNAVAILABLE", "Service temporarily unavailable"));
+    }
+
     @ExceptionHandler(Exception.class)
     ResponseEntity<ErrorResponse> unexpected(Exception e) {
+        if (isLostConnection(e)) {
+            return unavailable(e); // a connection that dies mid-request arrives wrapped in all sorts of exceptions
+        }
         log.error("Unhandled exception", e);
         return body(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR", "Unexpected error");
     }
