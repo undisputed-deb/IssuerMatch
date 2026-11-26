@@ -131,7 +131,7 @@ The backlog fell from 105,334 to 439, while request latency rose a little.
 7. **Optimistic or pessimistic locking?** Pessimistic row locks, because several rules read history and need it stable. The need row also keeps a version column that capacity changes bump.
 8. **How would this scale to several instances?** The outbox uses `SKIP LOCKED` and consumers share a group. Rate limits would need Redis, and topics need more partitions.
 9. **Where could you still lose data?** Dead letters are copied from Kafka, so a long database outage past Kafka retention would lose them. The copier retries without limit to narrow that window.
-10. **What did your tests miss?** The load test found the publisher bottleneck, the failure script found the 30 second hang, and the browser test found a page that never refreshed.
+10. **What did your tests miss?** The load test found the publisher bottleneck, the failure script found the 30 second hang, and the browser test found a page that never refreshed. Running the browser tests with the model unreachable showed the fallback ranking taking minutes, because every candidate retried the same failing embedding.
 11. **Why 404 and not 403 for another user's data?** A 403 confirms the id exists.
 12. **Why not store roles in your own table?** Supabase `app_metadata` is already server controlled and travels in the token. The trade-off is that a removed role lasts until the token expires.
 13. **How do you test without paying for the model?** An `LlmClient` interface with a scripted fake that calls the real tools. One browser test uses real Gemini.
@@ -142,7 +142,7 @@ The backlog fell from 105,334 to 439, while request latency rose a little.
 18. **What happens if an investor passes and offers at the same moment?** Both lock the investor row, so one runs first. A live offer blocks a pass; an offer after a pass replaces the decision.
 
 ## Resume bullets (measured numbers only)
-- Built a two-sided capital-matching platform (Java 21, Spring Boot, Kafka, Spring AI, pgvector, React) with 4 platform roles and 3 firm roles, 60 REST endpoints and 388 integration and unit tests at 95.0% line coverage.
+- Built a two-sided capital-matching platform (Java 21, Spring Boot, Kafka, Spring AI, pgvector, React) with 4 platform roles and 3 firm roles, 60 REST endpoints and 390 integration and unit tests at 95.0% line coverage.
 - Designed a retry-safe commitment API with idempotency keys, row locking and a runtime-tunable risk engine, sustaining about 620 requests/s at p95 133 ms with zero errors in a single-laptop load test.
 - Found and fixed an event-publishing bottleneck through load testing, cutting the post-load backlog from 105,334 events to 439.
 - Combined semantic thesis search with deterministic scoring and a fallback matcher, so a model outage still yields a reviewable ranking.

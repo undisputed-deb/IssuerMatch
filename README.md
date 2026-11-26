@@ -137,7 +137,7 @@ An investor's offer is a commitment with extra fields:
 ## Measured results
 | What | Number | Source |
 |---|---|---|
-| Backend tests | 388, with real Postgres and Kafka | `./mvnw test` |
+| Backend tests | 390, with real Postgres and Kafka | `./mvnw test` |
 | Coverage | 95.0% lines, 86.0% branches | JaCoCo |
 | Dependency scan | 0 findings in 269 packages | `scripts/dependency-scan.sh` |
 | Commitment throughput* | 619 requests/s, p95 133 ms, 0 errors (one laptop, 50 users, 60 s) | [docs/LOAD_TEST.md](docs/LOAD_TEST.md) |
@@ -155,18 +155,26 @@ An investor's offer is a commitment with extra fields:
 |---|---|
 | `cd backend && ./mvnw test` | All backend tests (Docker needed; no calls to Gemini or Supabase) |
 | `scripts/e2e.sh` | Staff browser test with real login and a real model call, throwaway database |
+| `scripts/e2e.sh offline` | Every browser test with no model calls |
 | `scripts/load/run.sh` | k6 load test on a throwaway database |
 | `scripts/chaos.sh` | Stops Kafka and Postgres and breaks the model key on purpose |
 | `scripts/dependency-scan.sh` | Vulnerability scan of every dependency |
 
-Two browser tests cover public signup and the whole investor/issuer deal. They create real Supabase users, so they run
-only on request, against the running Docker stack:
+Browser tests cover public signup, the investor/issuer deal, a firm team joining by invitation link, and the offer loop
+to the company's accept or decline. They create real Supabase users, so they run only on request:
 ```
-scripts/e2e.sh accounts          # reads backend/.env and backend/.env.admin (ADMIN_EMAIL, ADMIN_PASSWORD)
+scripts/e2e.sh offline           # all browser tests, Gemini unreachable, own Kafka, database and ports
+scripts/e2e.sh accounts          # signup, deal and team tests against the running Docker stack, live model
 REQUIRE_LIVE_MODEL=true scripts/e2e.sh     # fail the staff test if the app ranked without the model
 ```
-Gemini's free tier allows few requests per day. Once they are spent the app ranks without the model, and the staff test
-accepts that unless you set the flag.
+All three read `backend/.env` and `backend/.env.admin` (ADMIN_EMAIL, ADMIN_PASSWORD). Gemini's free tier allows few
+requests per day. Once they are spent the app ranks without the model, and the staff test accepts that unless you set
+the flag.
+
+To click through the app without any model calls, add the override file:
+```
+docker compose --env-file backend/.env -f docker-compose.yml -f docker-compose.offline.yml --profile app up --build -d
+```
 When the run ends, passed or failed, `scripts/e2e-cleanup.sh` deletes the test accounts and every row named `E2E%`.
 Run that script by hand after a killed run.
 

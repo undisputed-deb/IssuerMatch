@@ -6,7 +6,7 @@ set -u
 root="$(cd "$(dirname "$0")/.." && pwd)"; cd "$root"
 service="${1:-${E2E_DB_SERVICE:-postgres}}"
 status=0
-compose() { docker compose --profile app --profile load "$@"; }
+compose() { docker compose --profile app --profile load --profile e2e "$@"; }
 
 if compose ps --status running --services 2>/dev/null | grep -qx "$service"; then
   if compose exec -T "$service" psql -U postgres -q -v ON_ERROR_STOP=1 < scripts/e2e-cleanup.sql; then

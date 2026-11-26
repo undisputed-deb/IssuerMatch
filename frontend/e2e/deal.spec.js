@@ -1,39 +1,15 @@
 import { expect, test } from '@playwright/test';
+import { createAccount, noOverflow, person as openPerson } from './helpers.js';
 
-// The whole two-sided flow in real browsers, with a real model call. Creates REAL users; global-teardown.js deletes them. Runs only when asked:
+// The whole two-sided flow in real browsers. Creates REAL users; global-teardown.js deletes them. Runs only when asked:
+// scripts/e2e.sh offline (no model calls), scripts/e2e.sh accounts (live), or by hand:
 //   SIGNUP_E2E=1 SUPABASE_URL=... SUPABASE_ADMIN_KEY=... ADMIN_EMAIL=... ADMIN_PASSWORD=... npx playwright test deal
 const shots = process.env.SHOTS_DIR || 'test-results/shots';
 
 test.skip(!process.env.SIGNUP_E2E, 'creates real accounts: set SIGNUP_E2E=1 to run');
 
 const errors = [];
-
-async function person(browser) {
-  const page = await (await browser.newContext()).newPage();
-  page.on('pageerror', (e) => errors.push(e.message));
-  return page;
-}
-
-async function createAccount(page, role, label) {
-  const email = `e2e-deal-${label}-${Date.now()}@issuermatch.test`;
-  const password = `pw-${Math.random().toString(36).slice(2)}-${Date.now()}`;
-  await page.goto('/');
-  await page.getByRole('button', { name: 'Create account', exact: true }).click();
-  await page.getByLabel('Full name').fill(`E2E ${label}`);
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(password);
-  await page.getByRole('radio', { name: new RegExp(role) }).check();
-  await page.getByRole('button', { name: 'Create my account' }).click();
-}
-
-async function noOverflow(page, name) {
-  for (const width of [375, 768, 1280]) {
-    await page.setViewportSize({ width, height: 900 });
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    expect(overflow, `${name}: no horizontal scroll at ${width}px`).toBeLessThanOrEqual(0);
-    await page.screenshot({ path: `${shots}/${name}-${width}.png`, fullPage: true });
-  }
-}
+const person = (browser) => openPerson(browser, errors);
 
 test('profile, need, approval, question, answer, offer and pass', async ({ browser }) => {
   test.setTimeout(240_000);
@@ -43,9 +19,9 @@ test('profile, need, approval, question, answer, offer and pass', async ({ brows
   const huge = '900000000000'; // only this investor passes the need's capital deal breaker, so the agent must rank it
 
   const investor = await person(browser);
-  await createAccount(investor, 'Investor', 'investor');
+  await createAccount(investor, 'Investor', 'deal-investor');
   await investor.getByLabel('Your name').fill('Ivy Chen');
-  await investor.getByLabel('Your role').fill('Managing Partner');
+  await investor.getByLabel('Your role', { exact: true }).fill('Managing Partner');
   await investor.getByLabel('Firm name').fill(firm);
   await investor.getByLabel('Deployable capital, USD').fill(huge);
   await investor.getByLabel('What you invest in, and what you do not').fill('We back European fintech with recurring revenue. No gambling.');
@@ -55,7 +31,7 @@ test('profile, need, approval, question, answer, offer and pass', async ({ brows
   await expect(investor.getByRole('link', { name: 'Matched deals' })).toBeVisible();
 
   const issuer = await person(browser);
-  await createAccount(issuer, 'Issuer', 'issuer');
+  await createAccount(issuer, 'Issuer', 'deal-issuer');
   await issuer.getByLabel('Company name').fill(`E2E Deal Co ${stamp}`);
   await issuer.getByRole('button', { name: 'Add company' }).click();
   await expect(issuer.getByRole('heading', { name: 'My funding needs' })).toBeVisible();

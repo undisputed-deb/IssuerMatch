@@ -1,0 +1,13 @@
+# Run the app stack with the language model out of reach, to try the screens without spending Gemini quota:
+#   docker compose --env-file backend/.env -f docker-compose.yml -f docker-compose.offline.yml --profile app up --build -d
+# Matching uses the deterministic scorer (runs are labelled degraded) and theses stay unindexed until you start without
+# this file. A dummy key replaces yours, and a dead proxy stops requests to Google leaving the container.
+services:
+  api:
+    environment:
+      GEMINI_API_KEY: offline-no-key
+      APP_AGENT_DAILYTOKENBUDGET: "0"      # never even try the chat model
+      SPRING_AI_RETRY_MAXATTEMPTS: "1"     # an embedding that cannot work is not retried ten times
+      APP_EMBEDDINGS_INITIAL_DELAY: 24h    # do not try to index theses
+      JAVA_TOOL_OPTIONS: >-
+        -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=9 -Dhttp.nonProxyHosts=localhost|127.0.0.1|*.supabase.co

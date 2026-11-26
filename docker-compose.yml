@@ -46,11 +46,37 @@ services:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
 
-  # Throwaway database for the load test only (profile "load"). Never your real database.
+  # A second, throwaway broker for "scripts/e2e.sh offline", so test events never reach a running app stack.
+  kafka-e2e:
+    image: apache/kafka:3.9.0
+    profiles: ["e2e"]
+    container_name: issuermatch-kafka-e2e
+    ports:
+      - "127.0.0.1:9094:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: INTERNAL://:29092,CONTROLLER://:9093,HOST://:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-e2e:29092,HOST://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-e2e:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  # Throwaway database for the load test and the offline browser tests only (profile "load"). Never your real database.
   # trust auth is acceptable because the port is bound to 127.0.0.1 and the data is synthetic.
   postgres-load:
     image: pgvector/pgvector:pg17 # PostgreSQL 17 with the vector extension
-    profiles: ["load"]
+    profiles: ["load", "e2e"]
     container_name: issuermatch-pg-load
     ports:
       - "127.0.0.1:5433:5432"

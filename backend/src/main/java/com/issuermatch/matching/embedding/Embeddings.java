@@ -1,17 +1,23 @@
 package com.issuermatch.matching.embedding;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 /**
  * Keeps vectors in the database. Embedding is never allowed to break a feature: if the provider fails, the thesis
- * simply stays unindexed (and is retried) and a need is scored without thesis alignment.
+ * simply stays unindexed (and is retried) and a need is scored without thesis alignment. A need that just failed is not
+ * asked for again for a while: scoring calls ofNeed once per investor, and each failing call can take many seconds.
  */
 @Service
 public class Embeddings {
@@ -21,10 +27,14 @@ public class Embeddings {
 
     private final JdbcTemplate db;
     private final EmbeddingClient client;
+    private final Duration retryAfter;
+    // ponytail: per instance and in memory; entries expire, so it holds at most the needs that failed within the wait
+    private final Map<UUID, Instant> failedNeeds = new ConcurrentHashMap<>();
 
-    Embeddings(JdbcTemplate db, EmbeddingClient client) {
+    Embeddings(JdbcTemplate db, EmbeddingClient client, @Value("${app.embeddings.retry-after:1m}") Duration retryAfter) {
         this.db = db;
         this.client = client;
+        this.retryAfter = retryAfter;
     }
 
     @Scheduled(fixedDelayString = "${app.embeddings.interval:15s}", initialDelayString = "${app.embeddings.initial-delay:5s}")
@@ -64,13 +74,21 @@ public class Embeddings {
         if (stored.get(0) != null) {
             return Optional.of(stored.get(0));
         }
+        Instant failed = failedNeeds.get(needId);
+        if (failed != null && Instant.now().isBefore(failed.plus(retryAfter))) {
+            return Optional.empty();
+        }
         String text = db.queryForObject("SELECT title || '. ' || sector || ' company in ' || region || '. ' || description"
                 + " FROM funding_needs WHERE id = ?", String.class, needId);
         try {
             String vector = literal(client.embed(text.replace('_', ' ').toLowerCase()));
             db.update("UPDATE funding_needs SET embedding = ?::vector WHERE id = ?", vector, needId);
+            failedNeeds.remove(needId);
             return Optional.of(vector);
         } catch (RuntimeException e) {
+            Instant now = Instant.now();
+            failedNeeds.values().removeIf(at -> !now.isBefore(at.plus(retryAfter)));
+            failedNeeds.put(needId, now);
             log.warn("Could not embed need {}: {}", needId, e.getClass().getSimpleName());
             return Optional.empty();
         }
