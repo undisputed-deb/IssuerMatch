@@ -19,6 +19,23 @@
 	</properties>
 	<dependencyManagement>
 		<dependencies>
+			<!-- Security pins: transitive libraries with known High vulnerabilities (found by osv-scanner, see SECURITY_AUDIT.md).
+			     Remove a pin once the Spring Boot or Spring AI BOM manages that version or newer. -->
+			<dependency>
+				<groupId>at.yawk.lz4</groupId>
+				<artifactId>lz4-java</artifactId>
+				<version>1.11.4</version>
+			</dependency>
+			<dependency>
+				<groupId>com.google.guava</groupId>
+				<artifactId>guava</artifactId>
+				<version>33.7.2-android</version>
+			</dependency>
+			<dependency>
+				<groupId>org.xerial.snappy</groupId>
+				<artifactId>snappy-java</artifactId>
+				<version>1.1.10.9</version>
+			</dependency>
 			<dependency>
 				<groupId>org.springframework.ai</groupId>
 				<artifactId>spring-ai-bom</artifactId>
