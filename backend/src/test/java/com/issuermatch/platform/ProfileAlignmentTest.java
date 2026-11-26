@@ -117,9 +117,9 @@ class ProfileAlignmentTest {
             verify(kind, id, Auth.admin(), true).andExpect(status().isOk()).andExpect(jsonPath("$.verified").value(true));
             assertThat(db.queryForObject("SELECT verified FROM " + kind + " WHERE id = ?", Boolean.class, id)).isTrue();
         }
-        // an owner saving the company afterwards cannot overwrite the flag
+        // an owner saving the company with the same identity cannot overwrite the flag
         String name = db.queryForObject("SELECT name FROM issuers WHERE id = ?", String.class, deal.issuerId);
-        send(put("/issuers/" + deal.issuerId), Auth.issuer(deal.issuerUser), company(name, PROFILE)).andExpect(status().isOk())
+        send(put("/issuers/" + deal.issuerId), Auth.issuer(deal.issuerUser), company(name, null)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.verified").value(true));
 
         verify("issuers", deal.issuerId, Auth.admin(), false).andExpect(status().isOk());
@@ -132,21 +132,93 @@ class ProfileAlignmentTest {
     }
 
     @Test
-    void aMatchedInvestorSeesTheCompanyCardButNeitherRunwayNorDataRoom() throws Exception {
+    void onlyAnApprovedInvestorSeesTheCompanyCardRunwayAndDataRoom() throws Exception {
         deal = new Deals(db, "EQUITY");
         Deals.Party ivy = deal.investor("APPROVED");
+        Deals.Party waiting = deal.investor("PENDING_REVIEW");
+        Deals.Party unmatched = deal.investor(null);
         String name = db.queryForObject("SELECT name FROM issuers WHERE id = ?", String.class, deal.issuerId);
         send(put("/issuers/" + deal.issuerId), Auth.issuer(deal.issuerUser), company(name, PROFILE)).andExpect(status().isOk());
         verify("issuers", deal.issuerId, Auth.admin(), true).andExpect(status().isOk());
 
-        String feed = mvc.perform(get("/investor/matches").with(Auth.investor(ivy.user()))).andExpect(status().isOk())
+        mvc.perform(get("/investor/matches").with(Auth.investor(ivy.user()))).andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].company.verified").value(true))
                 .andExpect(jsonPath("$[0].company.contactName").value("Ada Park"))
                 .andExpect(jsonPath("$[0].company.websiteUrl").value("https://acme.example.test"))
                 .andExpect(jsonPath("$[0].company.summary").value("Payments for clinics."))
                 .andExpect(jsonPath("$[0].company.foundedYear").value(2019))
-                .andReturn().getResponse().getContentAsString();
-        assertThat(feed).doesNotContain("runway").doesNotContain("dataRoom").doesNotContain("secret-room");
+                .andExpect(jsonPath("$[0].company.runwayMonths").value(14))
+                .andExpect(jsonPath("$[0].company.dataRoomUrl").value("https://rooms.example.test/secret-room"));
+
+        // nobody without an approved match gets either, on any route they can try
+        for (RequestPostProcessor other : new RequestPostProcessor[] {Auth.investor(waiting.user()), Auth.investor(unmatched.user()),
+                Auth.investor(UUID.randomUUID()), Auth.issuer(UUID.randomUUID()), Auth.anonymous()}) {
+            for (String path : new String[] {"/investor/matches", "/issuers", "/issuers/" + deal.issuerId, "/funding-needs",
+                    "/funding-needs/" + deal.needId}) {
+                String body = mvc.perform(get(path).with(other)).andReturn().getResponse().getContentAsString();
+                assertThat(body).as(path).doesNotContain("secret-room").doesNotContain("runwayMonths\":14");
+            }
+        }
+    }
+
+    @Test
+    void renamingOrMovingAVerifiedCompanyWithdrawsTheBadgeAndAuditsIt() throws Exception {
+        UUID me = owner();
+        String name = "Badge " + UUID.randomUUID();
+        String id = send(post("/issuers"), Auth.issuer(me), company(name, PROFILE)).andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString().replaceAll("^\\{\"id\":\"([^\"]+)\".*", "$1");
+        UUID issuer = UUID.fromString(id);
+        verify("issuers", issuer, Auth.admin(), true).andExpect(status().isOk());
+
+        // other fields, an update without a profile, and the same values again all keep it
+        send(put("/issuers/" + id), Auth.issuer(me), company(name, PROFILE.replace("Ada Park", "Bo Lin"))).andExpect(status().isOk())
+                .andExpect(jsonPath("$.verified").value(true));
+        send(put("/issuers/" + id), Auth.issuer(me), company(name, null)).andExpect(jsonPath("$.verified").value(true));
+
+        send(put("/issuers/" + id), Auth.issuer(me), company(name + " Holdings", null)).andExpect(jsonPath("$.verified").value(false));
+        mvc.perform(get("/issuers/" + id).with(Auth.issuer(me))).andExpect(jsonPath("$.verified").value(false));
+        // already unverified: nothing more to withdraw or to log
+        send(put("/issuers/" + id), Auth.issuer(me), company(name, null)).andExpect(status().isOk());
+
+        verify("issuers", issuer, Auth.admin(), true);
+        for (String moved : new String[] {PROFILE.replace("https://acme.example.test", "https://other.example.test"),
+                "{\"contactName\":\"no website now\"}"}) {
+            verify("issuers", issuer, Auth.admin(), true);
+            send(put("/issuers/" + id), Auth.issuer(me), company(name, moved)).andExpect(jsonPath("$.verified").value(false));
+        }
+        // an admin editing the company is held to the same rule
+        verify("issuers", issuer, Auth.admin(), true);
+        send(put("/issuers/" + id), Auth.admin(), company("Admin Renamed " + UUID.randomUUID(), null))
+                .andExpect(jsonPath("$.verified").value(false));
+
+        var revoked = db.queryForList("SELECT actor, details::text AS details FROM audit_log WHERE resource = ?"
+                + " AND action = 'ISSUER_VERIFICATION_REVOKED' ORDER BY at", "issuer:" + id);
+        assertThat(revoked).extracting(r -> r.get("details")).containsExactly("{\"changed\": [\"name\"]}",
+                "{\"changed\": [\"website\"]}", "{\"changed\": [\"website\"]}", "{\"changed\": [\"name\"]}");
+        assertThat(revoked.get(0).get("actor")).isEqualTo(me.toString());
+    }
+
+    @Test
+    void renamingOrMovingAVerifiedFirmWithdrawsTheBadgeAndAuditsIt() throws Exception {
+        UUID me = owner();
+        String firm = "Badge Fund " + UUID.randomUUID();
+        send(put("/investors/me"), Auth.investor(me), Profiles.json(firm)).andExpect(status().isOk());
+        UUID id = db.queryForObject("SELECT id FROM investors WHERE owner_user_id = ?", UUID.class, me);
+
+        verify("investors", id, Auth.admin(), true).andExpect(status().isOk());
+        send(put("/investors/me"), Auth.investor(me), Profiles.json(firm).replace("Managing Partner", "Partner"))
+                .andExpect(jsonPath("$.verified").value(true));
+        send(put("/investors/me"), Auth.investor(me), Profiles.json(firm + " II")).andExpect(jsonPath("$.verified").value(false));
+        verify("investors", id, Auth.admin(), true);
+        send(put("/investors/me"), Auth.investor(me), Profiles.json(firm + " II").replace("example.test/fund", "example.test/other"))
+                .andExpect(jsonPath("$.verified").value(false));
+        verify("investors", id, Auth.admin(), true);
+        send(put("/investors/" + id), Auth.admin(), "{\"name\":\"Staff Renamed " + UUID.randomUUID()
+                + "\",\"investorType\":\"VC\",\"region\":\"EUROPE\"}").andExpect(jsonPath("$.verified").value(false));
+
+        assertThat(db.queryForList("SELECT details::text FROM audit_log WHERE resource = ? AND action = 'INVESTOR_VERIFICATION_REVOKED'"
+                + " ORDER BY at", String.class, "investor:" + id)).containsExactly("{\"changed\": [\"name\"]}",
+                "{\"changed\": [\"website\"]}", "{\"changed\": [\"name\"]}");
     }
 
     @Test

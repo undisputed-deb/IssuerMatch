@@ -5,6 +5,7 @@ import com.issuermatch.common.Region;
 import com.issuermatch.common.RiskLevel;
 import com.issuermatch.common.Sector;
 import com.issuermatch.fundingneed.CompanyStage;
+import com.issuermatch.team.OrgRole;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
@@ -76,7 +77,14 @@ public final class InvestorDtos {
                             List<MandateResponse> mandates, boolean profileCompleted, String contactName, String roleTitle,
                             String companyName, String websiteUrl, BigDecimal aumOrRevenueUsd, BigDecimal deployableCapitalUsd,
                             String currency, String longThesisDescription, ParticipationRole participationRole,
-                            DeploymentStatus deploymentStatus, boolean verified) {
+                            DeploymentStatus deploymentStatus, boolean verified,
+                            OrgRole myOrgRole) { // only on /investors/me, for the screen; the server checks roles itself
+        InvestorResponse as(OrgRole role) {
+            return new InvestorResponse(id, name, investorType, region, createdAt, mandates, profileCompleted, contactName,
+                    roleTitle, companyName, websiteUrl, aumOrRevenueUsd, deployableCapitalUsd, currency, longThesisDescription,
+                    participationRole, deploymentStatus, verified, role);
+        }
+
         static InvestorResponse from(Investor i) {
             return from(i, i.getMandates());
         }
@@ -86,7 +94,7 @@ public final class InvestorDtos {
                     mandates.stream().map(MandateResponse::from).toList(), i.isProfileCompleted(), i.getContactName(),
                     i.getRoleTitle(), i.getCompanyName(), i.getWebsiteUrl(), i.getAumOrRevenueUsd(), i.getDeployableCapitalUsd(),
                     i.getCurrency(), i.getLongThesisDescription(), i.getParticipationRole(), i.getDeploymentStatus(),
-                    i.isVerified());
+                    i.isVerified(), null);
         }
     }
 }

@@ -72,6 +72,8 @@ class SecurityConfig {
                         .requestMatchers("/health", "/actuator/health", "/actuator/health/**").permitAll()
                         // public signup: the only unauthenticated write. Validated to ISSUER/INVESTOR and rate limited.
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/auth/signup").permitAll()
+                        // an invited person has no account yet: the link's holder may see the firm name and role. Rate limited.
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/investor-invites/*/preview").permitAll()
                         .requestMatchers("/actuator/**").hasRole(Role.ADMIN.name())
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(o -> o

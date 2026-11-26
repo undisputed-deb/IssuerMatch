@@ -16,7 +16,7 @@ const TERM_LABELS = {
 const show = (v) => (typeof v === 'boolean' ? (v ? 'Yes' : 'No') : typeof v === 'number' ? money(v) : words(String(v)));
 
 /** The deals a human approved for this investor. Everything here is text; nothing is rendered as HTML. */
-export default function InvestorDeals() {
+export default function InvestorDeals({ role }) {
   const deals = useLoad(api.investorMatches, [], () => 15000);
   const offers = useLoad(api.investorOffers, [], () => 15000);
   const questions = useLoad(api.investorQuestions, [], () => 15000); // one request for every deal's thread
@@ -30,7 +30,7 @@ export default function InvestorDeals() {
       {deals.data?.length === 0 && <p>No deals yet. A deal appears here after our review team approves a match with your firm.</p>}
       <ul className="space-y-8">
         {deals.data?.map((d) => (
-          <Deal key={d.matchResultId} deal={d} onChange={reload}
+          <Deal key={d.matchResultId} deal={d} onChange={reload} role={role}
             offers={offers.data?.filter((o) => o.needId === d.needId) ?? []}
             thread={{ data: questions.data?.filter((q) => q.needId === d.needId), loading: questions.loading, reload: questions.reload }} />
         ))}
@@ -39,7 +39,7 @@ export default function InvestorDeals() {
   );
 }
 
-function Deal({ deal, offers, thread, onChange }) {
+function Deal({ deal, offers, thread, role, onChange }) {
   const [drawer, setDrawer] = useState(false);
   const terms = Object.entries(deal.instrumentTerms ?? {}).filter(([k, v]) => k !== 'type' && v != null);
   return (
@@ -64,7 +64,8 @@ function Deal({ deal, offers, thread, onChange }) {
             <p className="max-w-prose">{deal.dealBrief}</p>
           </section>
           <Company name={deal.issuerName} company={deal.company} />
-          <ThreadView needId={deal.needId} mode="investor" thread={thread} suggestions={deal.suggestedDiligenceQuestions} />
+          <ThreadView needId={deal.needId} mode="investor" thread={thread} suggestions={deal.suggestedDiligenceQuestions}
+            canAsk={role !== 'VIEWER'} />
           <details>
             <summary className="flex min-h-11 items-center font-medium text-brand">The issuer’s description and terms</summary>
             <p className="max-w-prose whitespace-pre-wrap break-words">{deal.description}</p>
@@ -86,7 +87,7 @@ function Deal({ deal, offers, thread, onChange }) {
             <p className="mb-2 font-mono text-3xl">{Number(deal.score).toFixed(1)}<span className="text-base text-soft"> / 100 fit</span></p>
             <Breakdown breakdown={deal.scoreBreakdown} />
           </div>
-          <Decision deal={deal} offers={offers} onOffer={() => setDrawer(true)} onChange={onChange} />
+          <Decision deal={deal} offers={offers} role={role} onOffer={() => setDrawer(true)} onChange={onChange} />
         </aside>
       </div>
       {drawer && <OfferDrawer deal={deal} investorId={deal.investorId} onClose={() => setDrawer(false)} onSent={onChange} />}
@@ -94,7 +95,7 @@ function Deal({ deal, offers, thread, onChange }) {
   );
 }
 
-/** What the company says about itself. Runway and data room are never sent to investors. */
+/** What the company says about itself. The server sends it only to investors approved for this raise. */
 function Company({ name, company: c }) {
   const facts = [
     ['Contact', [c.contactName, c.contactRole].filter(Boolean).join(', ')],
@@ -102,6 +103,8 @@ function Company({ name, company: c }) {
     ['Founded', c.foundedYear],
     ['Team size', c.teamSizeBand],
     ['Raised so far', c.totalRaisedUsd != null && `${money(c.totalRaisedUsd)} USD`],
+    ['Runway', c.runwayMonths != null && `${c.runwayMonths} months`],
+    ['Data room', c.dataRoomUrl && <Website url={c.dataRoomUrl} />],
   ].filter(([, value]) => value);
   if (!c.summary && facts.length === 0) return null;
   return (
@@ -117,8 +120,10 @@ function Company({ name, company: c }) {
   );
 }
 
-/** Your offers on this deal, then the two choices: make an offer, or pass with an optional reason. */
-function Decision({ deal, offers, onOffer, onChange }) {
+/** The firm's offers on this deal, then the two choices: make an offer, or pass with an optional reason. */
+function Decision({ deal, offers, role, onOffer, onChange }) {
+  const canOffer = role === 'MANAGING_DIRECTOR';
+  const canPass = role !== 'VIEWER';
   const [passing, setPassing] = useState(false);
   const [reason, setReason] = useState('');
   const [state, setState] = useState({ busy: false, error: null });
@@ -152,10 +157,17 @@ function Decision({ deal, offers, onOffer, onChange }) {
       )}
       {passed && <p role="status" className="text-sm"><b>You passed on this deal.</b>{deal.passReason && ` Reason: ${deal.passReason}`}</p>}
       <div className="flex flex-wrap gap-3">
-        <Button onClick={onOffer}>{live ? 'Submit another offer' : 'Match & Submit Offer'}</Button>
-        {!live && !passed && !passing && <Button tone="plain" onClick={() => setPassing(true)}>Pass</Button>}
+        <Button disabled={!canOffer} onClick={onOffer} aria-describedby={canOffer ? undefined : `offer-why-${deal.matchResultId}`}>
+          {live ? 'Submit another offer' : 'Match & Submit Offer'}
+        </Button>
+        {canPass && !live && !passed && !passing && <Button tone="plain" onClick={() => setPassing(true)}>Pass</Button>}
       </div>
-      {passing && !passed && (
+      {!canOffer && (
+        <p id={`offer-why-${deal.matchResultId}`} className="text-sm text-soft">
+          Only a Managing Director can submit an offer: it binds the firm.
+        </p>
+      )}
+      {canPass && passing && !passed && (
         <form onSubmit={pass} className="space-y-2">
           <Field label="Why are you passing? (optional)">
             <textarea className={`${control} py-2`} rows={2} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} />

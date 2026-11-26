@@ -37,6 +37,11 @@ final class RateLimitFilters {
     private static final RequestMatcher SIGNUP =
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/auth/signup");
 
+    private static final RequestMatcher INVITE_CREATE =
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/investors/me/invites");
+    private static final RequestMatcher INVITE_PREVIEW =
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/investor-invites/{token}/preview");
+
     static OncePerRequestFilter perIp(RateLimiter limiter, RateLimitProperties props) {
         return new Base(props) {
             @Override
@@ -47,6 +52,9 @@ final class RateLimitFilters {
                     if (wait.isEmpty()) {
                         wait = limiter.tryAcquire("signup-global", props.signupGlobalPerMinute());
                     }
+                }
+                if (wait.isEmpty() && INVITE_PREVIEW.matches(request)) {
+                    wait = limiter.tryAcquire("invite-preview:" + request.getRemoteAddr(), props.invitePreviewPerMinute());
                 }
                 return wait;
             }
@@ -67,6 +75,9 @@ final class RateLimitFilters {
                     if (wait.isEmpty()) {
                         wait = limiter.tryAcquire("llm-global", props.llmGlobalPerMinute());
                     }
+                }
+                if (wait.isEmpty() && INVITE_CREATE.matches(request)) {
+                    wait = limiter.tryAcquire("invite:" + auth.getName(), props.inviteCreatePerMinute());
                 }
                 return wait;
             }

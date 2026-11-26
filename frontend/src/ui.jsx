@@ -166,6 +166,7 @@ export const RISKS = ['LOW', 'MEDIUM', 'HIGH'];
 
 export const CURRENCIES = ['USD', 'EUR', 'GBP', 'CHF', 'JPY', 'INR', 'SGD', 'AUD', 'CAD', 'AED'];
 export const STAGES = ['PRE_SEED', 'SEED', 'SERIES_A', 'SERIES_B_PLUS', 'GROWTH', 'MIDDLE_MARKET'];
+export const ROLE_LABELS = { MANAGING_DIRECTOR: 'Managing Director', ANALYST: 'Analyst', VIEWER: 'Viewer' };
 export const PARTICIPATION_ROLES = ['LEAD', 'CO_LEAD', 'FOLLOW_ON'];
 export const TEAM_SIZES = ['1-10', '11-50', '51-200', '201-1000', '1000+'];
 export const INVESTOR_TYPES = ['VC', 'PE', 'PRIVATE_CREDIT', 'FAMILY_OFFICE', 'CORPORATE_VC', 'ANGEL_SYNDICATE'];

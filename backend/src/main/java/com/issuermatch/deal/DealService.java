@@ -6,6 +6,8 @@ import com.issuermatch.common.NotFoundException;
 import com.issuermatch.matching.MatchVisibility;
 import com.issuermatch.security.CurrentUser;
 import com.issuermatch.security.Role;
+import com.issuermatch.team.InvestorMembershipService;
+import com.issuermatch.team.OrgRole;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -35,8 +37,11 @@ class DealService {
     private final JsonMapper json;
     private final AuditService audit;
     private final MatchVisibility visibility;
+    private final InvestorMembershipService memberships;
 
-    DealService(JdbcTemplate db, JsonMapper json, AuditService audit, MatchVisibility visibility) {
+    DealService(JdbcTemplate db, JsonMapper json, AuditService audit, MatchVisibility visibility,
+                InvestorMembershipService memberships) {
+        this.memberships = memberships;
         this.db = db;
         this.json = json;
         this.audit = audit;
@@ -75,22 +80,24 @@ class DealService {
         return db.query("SELECT c.id, c.need_id, n.title, c.amount, n.currency, c.status, c.proposed_stake_pct,"
                         + " c.proposed_terms_json::text AS terms, c.investment_rationale, c.created_at, c.issuer_decision"
                         + " FROM commitments c"
-                        + " JOIN funding_needs n ON n.id = c.need_id JOIN investors i ON i.id = c.investor_id"
-                        + " WHERE i.owner_user_id = ? ORDER BY c.created_at DESC LIMIT 200",
+                        + " JOIN funding_needs n ON n.id = c.need_id"
+                        + " WHERE c.investor_id = ? ORDER BY c.created_at DESC LIMIT 200",
                 (rs, k) -> new DealDtos.MyOffer(uuid(rs, "id"), uuid(rs, "need_id"), rs.getString("title"),
                         rs.getBigDecimal("amount"), rs.getString("currency"), rs.getString("status"),
                         rs.getBigDecimal("proposed_stake_pct"), tree(rs.getString("terms")),
-                        rs.getString("investment_rationale"), instant(rs, "created_at"), rs.getString("issuer_decision")), userId);
+                        rs.getString("investment_rationale"), instant(rs, "created_at"), rs.getString("issuer_decision")), firmOf(userId));
     }
 
     /** "Not for us", with an optional reason. Not possible while an offer is live: that money is already reserved. */
     void pass(UUID matchResultId, UUID userId, String reason) {
-        var rows = db.queryForList("SELECT m.need_id, r.investor_id FROM match_results r JOIN match_runs m ON m.id = r.run_id"
-                + " JOIN investors i ON i.id = r.investor_id WHERE r.id = ? AND m.status = 'APPROVED' AND i.owner_user_id = ?",
-                matchResultId, userId);
+        var me = memberships.find(userId);
+        var rows = me.isEmpty() ? List.<Map<String, Object>>of()
+                : db.queryForList("SELECT m.need_id, r.investor_id FROM match_results r JOIN match_runs m ON m.id = r.run_id"
+                        + " WHERE r.id = ? AND m.status = 'APPROVED' AND r.investor_id = ?", matchResultId, me.get().investorId());
         if (rows.isEmpty()) {
             throw new NotFoundException("Match not found");
         }
+        InvestorMembershipService.check(me.get(), OrgRole.ANALYST);
         UUID needId = (UUID) rows.get(0).get("need_id");
         UUID investorId = (UUID) rows.get(0).get("investor_id");
         lockInvestor(investorId); // the same lock an offer takes, so a pass and an offer cannot interleave
@@ -112,7 +119,8 @@ class DealService {
         if (me.isStaff()) {
             requireNeed(needId);
         } else if (!(me.has(Role.ISSUER) && owns(needId, me.id()))) {
-            onlyInvestor = me.has(Role.INVESTOR) ? matchedProfile(needId, me.id()) : null;
+            onlyInvestor = me.has(Role.INVESTOR) ? visibility.matchedFirm(me.id(), needId)
+                    .map(InvestorMembershipService.Membership::investorId).orElse(null) : null;
             if (onlyInvestor == null) {
                 throw new NotFoundException("Funding need not found");
             }
@@ -127,14 +135,13 @@ class DealService {
     @Transactional(readOnly = true)
     List<DealDtos.Question> myQuestions(UUID userId) {
         // ponytail: no paging, bounded by 50 questions per matched need; add paging if a firm matches hundreds of deals
-        return db.query(QUESTION + " WHERE i.owner_user_id = ? ORDER BY q.created_at, q.id", (rs, k) -> question(rs), userId);
+        return db.query(QUESTION + " WHERE q.investor_id = ? ORDER BY q.created_at, q.id", (rs, k) -> question(rs), firmOf(userId));
     }
 
     DealDtos.Question ask(UUID needId, UUID userId, String text) {
-        UUID investorId = matchedProfile(needId, userId);
-        if (investorId == null) {
-            throw new NotFoundException("Funding need not found");
-        }
+        var me = visibility.matchedFirm(userId, needId).orElseThrow(() -> new NotFoundException("Funding need not found"));
+        InvestorMembershipService.check(me, OrgRole.ANALYST);
+        UUID investorId = me.investorId();
         lockInvestor(investorId); // so parallel requests cannot slip past the limit
         if (count("SELECT count(*) FROM deal_questions WHERE need_id = ? AND investor_id = ?", needId, investorId)
                 >= MAX_QUESTIONS_PER_THREAD) {
@@ -181,12 +188,9 @@ class DealService {
                 needId, userId) > 0;
     }
 
-    /** The caller's investor profile id, only if a human approved it for this need. */
-    private UUID matchedProfile(UUID needId, UUID userId) {
-        if (!visibility.isMatched(userId, needId)) {
-            return null;
-        }
-        return db.queryForObject("SELECT id FROM investors WHERE owner_user_id = ?", UUID.class, userId);
+    /** The caller's firm, or null (which matches no row) for a user without one. */
+    private UUID firmOf(UUID userId) {
+        return memberships.find(userId).map(InvestorMembershipService.Membership::investorId).orElse(null);
     }
 
     private void lockInvestor(UUID investorId) {

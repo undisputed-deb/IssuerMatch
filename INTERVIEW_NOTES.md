@@ -49,6 +49,16 @@ The issuer accepts or declines an offer that already passed the risk rules, thro
 The risk status stays `ACCEPTED` and the answer lives in its own column, so I can tell a risk rejection from a company's
 no. Every query that counts held money had to learn about declined offers, and reconciliation tests catch a missed one.
 
+**Firm roles** (`team/InvestorMembershipService`).
+The platform role says "investor"; the firm role lives in my own table and I resolve it on each request, so a demotion
+takes effect at once without waiting for a token to expire. The old owner column counts only for a firm with no member
+rows, because a plain fallback would have let a removed owner walk back in, and a test covers that.
+
+**Invitation links** (`team/InviteService`, `TeamService`).
+I store the SHA-256 of a 32-byte random token and show the link once. Accepting locks the invitation row, so one link
+makes one member, and team changes lock the firm row so two directors demoting each other leave one. The weak point is
+that signup does not verify email, so the address check proves less than it looks.
+
 **Public signup** (`signup/`).
 The server creates the Supabase user and sets the role itself, and accepts two role strings.
 The admin key stays on the server, and a second check in the client class refuses staff roles.
@@ -125,14 +135,14 @@ The backlog fell from 105,334 to 439, while request latency rose a little.
 11. **Why 404 and not 403 for another user's data?** A 403 confirms the id exists.
 12. **Why not store roles in your own table?** Supabase `app_metadata` is already server controlled and travels in the token. The trade-off is that a removed role lasts until the token expires.
 13. **How do you test without paying for the model?** An `LlmClient` interface with a scripted fake that calls the real tools. One browser test uses real Gemini.
-14. **What is the weakest part?** Signup does not verify email, injection detection is pattern based, and rate limits are per instance.
+14. **What is the weakest part?** Signup does not verify email, so an invitation is only as private as its link. Injection detection is pattern based, and rate limits are per instance.
 15. **What would you do next?** Email confirmation, real exchange rates, shared rate limiting, TLS and ACLs on Kafka, and an independent security review.
 16. **Why can an investor not see why risk rejected its offer?** The reasons reveal limits and history. Staff see them and can explain.
 17. **What stops one investor reading another's questions?** The query filters by the profile the caller owns, and a test with two matched investors checks the response body.
 18. **What happens if an investor passes and offers at the same moment?** Both lock the investor row, so one runs first. A live offer blocks a pass; an offer after a pass replaces the decision.
 
 ## Resume bullets (measured numbers only)
-- Built a two-sided capital-matching platform (Java 21, Spring Boot, Kafka, Spring AI, pgvector, React) with 4 roles, 53 REST endpoints and 376 integration and unit tests at 94.6% line coverage.
+- Built a two-sided capital-matching platform (Java 21, Spring Boot, Kafka, Spring AI, pgvector, React) with 4 platform roles and 3 firm roles, 60 REST endpoints and 388 integration and unit tests at 95.0% line coverage.
 - Designed a retry-safe commitment API with idempotency keys, row locking and a runtime-tunable risk engine, sustaining about 620 requests/s at p95 133 ms with zero errors in a single-laptop load test.
 - Found and fixed an event-publishing bottleneck through load testing, cutting the post-load backlog from 105,334 events to 439.
 - Combined semantic thesis search with deterministic scoring and a fallback matcher, so a model outage still yields a reviewable ranking.

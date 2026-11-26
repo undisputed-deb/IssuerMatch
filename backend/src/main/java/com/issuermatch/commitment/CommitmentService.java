@@ -13,6 +13,8 @@ import com.issuermatch.common.ApiException;
 import com.issuermatch.common.AppMetrics;
 import com.issuermatch.common.Currencies;
 import com.issuermatch.common.NotFoundException;
+import com.issuermatch.team.InvestorMembershipService;
+import com.issuermatch.team.OrgRole;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -42,9 +44,11 @@ class CommitmentService {
     private final RiskEngine risk;
     private final CommitmentEvents events;
     private final AppMetrics metrics;
+    private final InvestorMembershipService memberships;
 
     CommitmentService(JdbcTemplate db, IdempotencyService idempotency, JsonMapper json, AuditService audit, RiskEngine risk,
-                      CommitmentEvents events, AppMetrics metrics) {
+                      CommitmentEvents events, AppMetrics metrics, InvestorMembershipService memberships) {
+        this.memberships = memberships;
         this.metrics = metrics;
         this.events = events;
         this.db = db;
@@ -62,10 +66,11 @@ class CommitmentService {
                     "Idempotency-Key header is required (1-128 characters: letters, digits, . _ : -)");
         }
         if (asInvestor) {
-            // the profile must be the caller's own; someone else's id looks exactly like a missing one
-            if (count("SELECT count(*) FROM investors WHERE id = ? AND owner_user_id = ?", request.investorId(), actor) == 0) {
-                throw new NotFoundException("Investor not found");
-            }
+            // the firm must be the caller's own; another firm's id looks exactly like a missing one
+            var me = memberships.find(actor).filter(m -> m.investorId().equals(request.investorId()))
+                    .orElseThrow(() -> new NotFoundException("Investor not found"));
+            InvestorMembershipService.check(me, OrgRole.MANAGING_DIRECTOR); // an offer binds the firm
+
             if (request.investmentRationale() == null || request.investmentRationale().isBlank()) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "investmentRationale is required: say why you like this company");
             }

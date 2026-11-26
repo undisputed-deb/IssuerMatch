@@ -10,8 +10,8 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 
 /**
- * What a company says about itself. Everything is optional, and all text is untrusted. runwayMonths and dataRoomUrl are
- * for the owner and staff: investors never receive them (see InvestorFeed).
+ * What a company says about itself. Everything is optional, and all text is untrusted. The owner, staff and investors
+ * approved for one of its raises read it (see InvestorFeed). Nobody else does.
  */
 @Embeddable
 public record CompanyProfile(

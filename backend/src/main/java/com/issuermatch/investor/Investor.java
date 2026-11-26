@@ -90,6 +90,11 @@ public class Investor {
     public String getCurrency() { return currency; }
     public String getLongThesisDescription() { return longThesisDescription; }
     public boolean isProfileCompleted() { return profileCompleted; }
+    /** Mirrors a revocation in memory. The column itself is written by VerificationService. */
+    public void badgeWithdrawn() {
+        this.verified = false;
+    }
+
     public ParticipationRole getParticipationRole() { return participationRole; }
     public DeploymentStatus getDeploymentStatus() { return deploymentStatus; }
     public boolean isVerified() { return verified; }

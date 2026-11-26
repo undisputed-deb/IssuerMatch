@@ -39,6 +39,11 @@ public class Issuer {
         this.profile = profile;
     }
 
+    /** Mirrors a revocation in memory. The column itself is written by VerificationService. */
+    public void badgeWithdrawn() {
+        this.verified = false;
+    }
+
     /** Never null: Hibernate reads a row with every profile column empty as no object at all. */
     public CompanyProfile getProfile() { return profile == null ? CompanyProfile.EMPTY : profile; }
     public boolean isVerified() { return verified; }

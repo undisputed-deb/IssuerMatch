@@ -27,7 +27,8 @@ class SignupController {
             @NotBlank @Email @Size(max = 254) String email,
             @NotNull @Size(min = 10, max = 72) String password, // 72: bcrypt ignores anything longer
             @NotBlank @Size(max = 100) String fullName,
-            @NotNull @Pattern(regexp = "ISSUER|INVESTOR", message = "must be ISSUER or INVESTOR") String role) {
+            @NotNull @Pattern(regexp = "ISSUER|INVESTOR", message = "must be ISSUER or INVESTOR") String role,
+            @Size(max = 64) String inviteToken) { // signing up through a team invitation: the email must be the invited one
 
         @Override
         public String toString() {

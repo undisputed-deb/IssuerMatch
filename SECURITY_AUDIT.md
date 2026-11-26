@@ -43,9 +43,9 @@ Severity reflects impact on this application. Each row names the fix commit and 
 ## Accepted risks and open items
 | Item | Why it stays | What would fix it |
 |---|---|---|
-| Signup confirms accounts without proof of email ownership | Demo has no mail setup | Supabase confirmation emails |
+| Signup confirms accounts without proof of email ownership. Whoever holds an invitation link can register the invited address and join the firm | Demo has no mail setup | Supabase confirmation emails |
 | A taken email answers 409, revealing that an account exists | Users need to know why signup failed | Same reply for both cases plus an email |
-| The features added after this audit (signup, offers, Q&A, semantic search) have tests but no second audit pass | Added later | Repeat this audit |
+| The features added after this audit (signup, offers, Q&A, semantic search, profiles, verification, issuer decisions, firm teams) have tests but no second audit pass | Added later | Repeat this audit |
 | Rate limits are per instance | One instance in this project | Shared store (Bucket4j with Redis) |
 | Injection detection is pattern based and evadable | The structural defences do not depend on it | A classifier model as a second signal |
 | Kafka has no TLS or SASL locally | Bound to 127.0.0.1, synthetic data | TLS, SASL and per-topic ACLs in production |

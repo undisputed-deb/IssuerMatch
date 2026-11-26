@@ -26,6 +26,38 @@ Four roles, always read from `app_metadata.roles`: `ISSUER`, `INVESTOR`, `ANALYS
   an account exists.
 - Email, name and password never reach the logs or the audit trail. Without a key the endpoint answers 503.
 
+### Firm roles (investors)
+An investor firm can have several people. The platform role stays `INVESTOR` for all of them; what each may do inside the
+firm comes from `investor_members`, read from the database on every request. A role sent by a client is ignored.
+
+| In the firm | Viewer | Analyst | Managing Director |
+|---|---|---|---|
+| Firm profile (read), matched deals, firm's offers and questions, team roster | yes | yes | yes |
+| Ask the issuer, pass on a deal | no | yes | yes |
+| Edit the profile and mandates, submit offers | no | no | yes |
+| Invite, revoke invitations, change roles, remove members, see pending invitations | no | no | yes |
+
+- A role too low answers `403`. Another firm's deal, invitation or member answers `404`.
+- Whoever creates a profile becomes its first Managing Director. Migration V28 made every earlier owner one.
+- One user belongs to at most one firm (`UNIQUE (user_id)`).
+- A firm cannot lose its last Managing Director (`409`). Team changes lock the firm's row and read the caller's role
+  again, so two directors acting at once cannot both succeed.
+- A member who is demoted or removed loses the invitations they had left open.
+- `investors.owner_user_id` is kept. It counts only for a profile with no member rows at all (inserted directly, not
+  through the app), so a removed owner does not return through it.
+
+### Invitation links
+`POST /investors/me/invites` returns `/invite/<token>` once. The token is 32 random bytes; the database keeps its SHA-256
+digest. It lasts 7 days, works once, and only for the invited address (compared without case). No email is sent.
+- `GET /investor-invites/{token}/preview` is public and rate limited: firm name, role, masked address, expiry. A link that
+  is unknown, expired, revoked or used answers `404`.
+- `POST /investor-invites/{token}/accept` needs a signed-in `INVESTOR` whose token email matches (`403` otherwise). A used
+  link answers `409`, as does a caller who already belongs to a firm.
+- Signup accepts the token and refuses another address before it creates an account.
+- The web server does not log `/invite/` requests and sends `Referrer-Policy: no-referrer` for that page.
+- Limit: signup does not prove that someone owns an address. Whoever holds a link and registers the invited address first
+  can join. Send links privately, and revoke one that went astray.
+
 ### Staff
 An administrator grants `ANALYST` or `ADMIN` in Supabase (raw app metadata `{"roles":["ANALYST"]}`). A token carries the
 roles it had when it was issued, so a change shows up after the next sign-in.
@@ -46,7 +78,7 @@ roles it had when it was issued, so a change shows up after the next sign-in.
 | Deal questions: ask | no | matched needs | no | no |
 | Deal questions: answer | own need | no | no | no |
 | Funding needs: request matching again | own | no | yes | yes |
-| Own investor profile (`/investors/me`) | no | yes | no | no |
+| Own firm profile and team (`/investors/me`) | no | by firm role, see above | no | no |
 | Investors and mandates (list, read) | no | no | yes | yes |
 | Investors and mandates: change | no | no | no | yes |
 | Match runs, results, approve / reject | no | no | yes | yes |
@@ -55,19 +87,20 @@ roles it had when it was issued, so a change shows up after the next sign-in.
 | Review a flagged commitment | no | no | yes (not their own) | yes (not their own) |
 | Risk rules, dead letters, reconciliation, metrics | no | no | no | yes |
 
-An investor is "matched" to a need only when a match run for it is `APPROVED` and ranked the investor profile that user owns.
+An investor is "matched" to a need only when a match run for it is `APPROVED` and ranked the firm that user belongs to.
 Pending and rejected runs show nothing. `MatchVisibility` holds this rule.
 
 ### What each side sees about the other
 - An investor sees the company name, the need and its own score, brief and questions, plus the company card: Verified
-  badge, contact name and role, website, summary, founding year, team size and amount raised. It does not receive the
-  runway or the data room link, the analyst explanation, the tool calls, its rank, other investors, their offers or
-  their questions.
+  badge, contact name and role, website, summary, founding year, team size, amount raised, runway and data room link.
+  Only an approved match receives that card. An investor never receives the analyst explanation, the tool calls, its rank,
+  other investors, their offers or their questions.
 - An issuer never sees the investor list or the ranking. It learns about an investor when that investor asks a question
   (firm name) or submits an offer: firm, type, contact name and role, assets or revenue, deployable capital, website,
   Verified badge, amount, terms and rationale. The thesis and mandates stay private.
 - Nobody can set a Verified badge on itself. The profile endpoints reject the field, the entities map the column read
-  only, and one admin endpoint writes it. Editing a profile keeps an existing badge.
+  only, and one admin endpoint writes it (the **Verification** screen calls it). Changing a verified company's or firm's
+  name or website removes the badge and records `..._VERIFICATION_REVOKED`; other edits keep it.
 - Risk rule reasons go to staff. An investor receives the offer status without them.
 - Using someone else's `investorId` in an offer, or offering on an unmatched need, answers `404`.
 

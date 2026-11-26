@@ -3,6 +3,7 @@ package com.issuermatch.signup;
 import com.issuermatch.audit.AuditService;
 import com.issuermatch.common.ApiException;
 import com.issuermatch.security.Role;
+import com.issuermatch.team.InviteService;
 import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -19,8 +20,10 @@ class SignupService {
     private final SupabaseAuthAdminClient auth;
     private final AuditService audit;
     private final TransactionTemplate tx;
+    private final InviteService invites;
 
-    SignupService(SupabaseAuthAdminClient auth, AuditService audit, TransactionTemplate tx) {
+    SignupService(SupabaseAuthAdminClient auth, AuditService audit, TransactionTemplate tx, InviteService invites) {
+        this.invites = invites;
         this.auth = auth;
         this.audit = audit;
         this.tx = tx;
@@ -28,6 +31,12 @@ class SignupService {
 
     SignupController.Response signup(SignupController.Request r) {
         Role role = Role.valueOf(r.role()); // the request is validated to ISSUER or INVESTOR before it gets here
+        if (r.inviteToken() != null) {
+            if (role != Role.INVESTOR) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "A team invitation is for an investor account");
+            }
+            invites.requireInvited(r.inviteToken(), r.email()); // refuse before an account that could not join exists
+        }
         UUID userId;
         try {
             userId = auth.createUser(new SupabaseAuthAdminClient.NewUser(r.email(), r.password(), r.fullName().strip(), role));

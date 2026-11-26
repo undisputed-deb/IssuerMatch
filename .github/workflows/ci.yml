@@ -33,6 +33,17 @@ jobs:
       - name: Build and test
         working-directory: backend
         run: ./mvnw -B -ntp verify
+      # which test failed, and why: without this a flaky failure leaves only "exit code 1"
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-test-reports
+          path: |
+            backend/target/surefire-reports/**
+            backend/target/failsafe-reports/**
+          retention-days: 7
+          if-no-files-found: warn
 
   frontend:
     runs-on: ubuntu-latest

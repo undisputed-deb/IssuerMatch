@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { api, currentUser, setSignedOutHandler, signOut } from './api.js';
-import { ErrorBox, Loading, useLoad } from './ui.jsx';
+import { ErrorBox, Loading, ROLE_LABELS, useLoad } from './ui.jsx';
 import Company from './pages/Company.jsx';
 import DeadLetters from './pages/DeadLetters.jsx';
 import InvestorDeals from './pages/InvestorDeals.jsx';
+import Invite from './pages/Invite.jsx';
 import Login from './pages/Login.jsx';
 import Needs from './pages/Needs.jsx';
 import NewNeed from './pages/NewNeed.jsx';
@@ -12,6 +13,8 @@ import Reconciliation from './pages/Reconciliation.jsx';
 import RiskReview from './pages/RiskReview.jsx';
 import RunDetail from './pages/RunDetail.jsx';
 import Runs from './pages/Runs.jsx';
+import Team from './pages/Team.jsx';
+import Verification from './pages/Verification.jsx';
 
 /** Tiny hash router: #/runs, #/runs/<id>, #/needs, ... */
 function useRoute() {
@@ -36,9 +39,24 @@ function areaOf(roles) {
   return null;
 }
 
+/** /invite/<token> is a real path, so the copied link works when pasted anywhere. Everything else uses the hash. */
+const inviteToken = () => window.location.pathname.match(/^\/invite\/([A-Za-z0-9_-]+)\/?$/)?.[1] ?? null;
+
 export default function App() {
   const [user, setUser] = useState(currentUser);
+  const [invite, setInvite] = useState(inviteToken);
   useEffect(() => setSignedOutHandler(() => setUser(null)), []);
+
+  /** Off the invitation page; the token leaves the address bar and the history entry. */
+  function leaveInvite(hash) {
+    window.history.replaceState(null, '', `/${hash}`);
+    setUser(currentUser());
+    setInvite(null);
+  }
+
+  if (invite) {
+    return <Invite token={invite} user={user} onSignedIn={setUser} onJoined={() => leaveInvite('#/deals')} onLeave={() => leaveInvite('')} />;
+  }
   if (!user) return <Login onSignedIn={(u) => { window.location.hash = ''; setUser(u); }} />;
   const area = areaOf(user.roles);
   if (area === 'staff') return <StaffArea user={user} />;
@@ -58,6 +76,7 @@ function StaffArea({ user }) {
     ['runs', 'Match runs'],
     ['needs', 'Funding needs'],
     ['risk', 'Risk review'],
+    admin && ['verification', 'Verification'],
     admin && ['dead-letters', 'Dead letters'],
     admin && ['reconciliation', 'Reconciliation'],
     admin && ['new', 'Submit a need'],
@@ -68,6 +87,7 @@ function StaffArea({ user }) {
       {active === 'runs' && (id ? <RunDetail id={id} /> : <Runs />)}
       {active === 'needs' && <Needs canRematch />}
       {active === 'risk' && <RiskReview />}
+      {active === 'verification' && <Verification />}
       {active === 'dead-letters' && <DeadLetters />}
       {active === 'reconciliation' && <Reconciliation />}
       {active === 'new' && <NewNeed />}
@@ -100,20 +120,34 @@ function InvestorArea({ user }) {
   }, []);
   const [saved, setSaved] = useState(null);
   const current = saved ?? profile.data?.value ?? null;
-  const complete = Boolean(current?.profileCompleted);
-  const tabs = complete ? [['deals', 'Matched deals'], ['profile', 'My profile']] : [['profile', 'Set up profile']];
-  const active = complete && page !== 'profile' ? 'deals' : 'profile';
+  // for what the screen offers only: the server reads the role from its own database on every request
+  const role = current?.myOrgRole ?? null;
+  // someone invited into a firm goes straight to its deals; only whoever can fill in the profile is sent to do so
+  const ready = Boolean(current?.profileCompleted) || (role !== null && role !== 'MANAGING_DIRECTOR');
+  const tabs = ready ? [['deals', 'Matched deals'], ['team', 'Team'], ['profile', role === 'MANAGING_DIRECTOR' ? 'My profile' : 'Firm profile']]
+    : [['profile', 'Set up profile']];
+  const active = !ready ? 'profile' : ['team', 'profile'].includes(page) ? page : 'deals';
+
+  async function membershipChanged() {
+    await profile.reload();
+    setSaved(null);
+  }
+
   return (
-    <Shell user={user} tabs={tabs} active={active}>
+    <Shell user={user} tabs={tabs} active={active} badge={role && ROLE_LABELS[role]}>
       {profile.loading && <Loading />}
       <ErrorBox error={profile.error} onRetry={profile.reload} />
-      {profile.data && active === 'profile' && <Profile profile={current} onSaved={(p) => { setSaved(p); window.location.hash = '/profile'; }} />}
-      {profile.data && active === 'deals' && <InvestorDeals />}
+      {profile.data && active === 'profile' && (
+        <Profile profile={current} readOnly={role !== null && role !== 'MANAGING_DIRECTOR'}
+          onSaved={(p) => { setSaved(p); window.location.hash = '/profile'; }} />
+      )}
+      {profile.data && active === 'team' && <Team onMembershipChanged={membershipChanged} />}
+      {profile.data && active === 'deals' && <InvestorDeals role={role} />}
     </Shell>
   );
 }
 
-function Shell({ user, tabs, active, children }) {
+function Shell({ user, tabs, active, badge, children }) {
   return (
     <div className="min-h-screen">
       <a href="#main" onClick={(e) => { e.preventDefault(); document.getElementById('main').focus(); }}
@@ -134,6 +168,7 @@ function Shell({ user, tabs, active, children }) {
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm text-white/80">
             <span className="hidden sm:inline">{user.email}</span>
+            {badge && <span className="rounded-sm bg-amber-300 px-1.5 text-xs font-medium text-ink">{badge}</span>}
             <span className="rounded-sm border border-white/30 px-1.5 font-mono text-xs">{user.roles.join(' ') || 'NO ROLE'}</span>
             <button type="button" onClick={signOut} className="min-h-11 px-2 underline hover:text-white">Sign out</button>
           </div>

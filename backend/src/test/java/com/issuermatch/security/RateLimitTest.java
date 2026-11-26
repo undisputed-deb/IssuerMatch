@@ -21,7 +21,8 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 @IntegrationTest
 @TestPropertySource(properties = {"app.rate-limit.enabled=true", "app.rate-limit.ip-per-minute=20",
         "app.rate-limit.user-per-minute=5", "app.rate-limit.llm-per-minute=2", "app.rate-limit.llm-global-per-minute=3",
-        "app.rate-limit.signup-per-minute=2", "app.rate-limit.signup-global-per-minute=3"})
+        "app.rate-limit.signup-per-minute=2", "app.rate-limit.signup-global-per-minute=3",
+        "app.rate-limit.invite-create-per-minute=2", "app.rate-limit.invite-preview-per-minute=3"})
 class RateLimitTest {
 
     @Autowired MockMvc mvc;
@@ -37,6 +38,24 @@ class RateLimitTest {
 
     int code(MockHttpServletRequestBuilder request) throws Exception {
         return mvc.perform(request).andReturn().getResponse().getStatus();
+    }
+
+    @Test
+    void invitationLinksHaveTheirOwnLimitsForReadingAndCreating() throws Exception {
+        for (int i = 0; i < 3; i++) {
+            assertThat(code(get("/investor-invites/guess" + i + "/preview").with(Auth.anonymous()).with(from("10.9.0.1")))).isEqualTo(404);
+        }
+        assertThat(code(get("/investor-invites/guess/preview").with(Auth.anonymous()).with(from("10.9.0.1")))).isEqualTo(429);
+        assertThat(code(get("/investor-invites/guess/preview").with(Auth.anonymous()).with(from("10.9.0.2")))).isEqualTo(404);
+
+        UUID inviter = UUID.randomUUID(); // no firm, so 404: the limit applies before any work
+        for (int i = 0; i < 2; i++) assertThat(code(invite(inviter, "10.9.1." + i))).isEqualTo(404);
+        assertThat(code(invite(inviter, "10.9.1.9"))).isEqualTo(429);
+    }
+
+    private MockHttpServletRequestBuilder invite(UUID user, String ip) {
+        return post("/investors/me/invites").with(Auth.investor(user)).with(from(ip)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"email\":\"a@fund.example.test\",\"orgRole\":\"VIEWER\"}");
     }
 
     @Test

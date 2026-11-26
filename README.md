@@ -14,7 +14,7 @@ Flyway, Resilience4j, React, Vite, Tailwind, Testcontainers, Playwright, k6.
 | Role | Gets an account by | Can |
 |---|---|---|
 | Issuer | public signup | keep a company profile, submit funding needs, accept or decline offers, answer investor questions |
-| Investor | public signup | keep an institutional profile, see approved deals, ask questions, offer or pass |
+| Investor | public signup or a team invitation link | work in a firm as Managing Director, Analyst or Viewer: profile, approved deals, questions, offers, passes |
 | Analyst | granted in Supabase | approve or reject match rankings, review flagged commitments, read all deals |
 | Admin | granted in Supabase | everything an analyst can, plus Verified badges, risk rules, dead letters and reconciliation |
 
@@ -69,7 +69,10 @@ dashboard (Connect button). The pooler username has a different format.
 2. **Issuer:** create an account, add a company in the investor's sector and region, submit a need inside the ticket range.
 3. **Admin:** open **Match runs**, read the ranking, score breakdown and tool calls, then approve.
 4. **Investor:** open the deal, click **Ask issuer** on a suggested question, then **Match & Submit Offer**.
-5. **Issuer:** open **Offers and questions** on the need, read the offer and answer the question.
+5. **Issuer:** open **Offers and questions** on the need, read the offer, accept or decline it, and answer the question.
+6. **Teams (optional):** as the investor, open **Team**, create an invite link for another address, and open it in a
+   private window.
+7. **Verified badge (optional):** as the admin, open **Verification**.
 
 The agent ranks at most 5 investors, and seeded investors compete with yours. To force yours into a demo, give it a
 very large deployable capital and set the need's minimum investor capital just below it.
@@ -87,6 +90,7 @@ All endpoints need `Authorization: Bearer <Supabase access token>` except health
 | Signup | `POST /auth/signup` |
 | Issuers | `POST GET /issuers`, `GET PUT DELETE /issuers/{id}` |
 | Investor profile | `GET PUT /investors/me` |
+| Investor team | `GET /investors/me/team`, `POST /investors/me/invites`, `DELETE /investors/me/invites/{id}`, `PATCH DELETE /investors/me/members/{userId}`, `GET /investor-invites/{token}/preview` (public), `POST /investor-invites/{token}/accept` |
 | Investors (staff) | `POST GET /investors`, `GET PUT DELETE /investors/{id}`, `POST GET /investors/{id}/mandates`, `GET PUT DELETE /investors/{id}/mandates/{mid}` |
 | Funding needs | `POST GET /funding-needs`, `GET /funding-needs/{id}`, `POST /funding-needs/{id}/match` |
 | Matching | `GET /match-runs`, `GET /match-runs/{id}`, `GET /match-runs/{id}/results`, `POST /match-runs/{id}/approve`, `POST /match-runs/{id}/reject` |
@@ -110,6 +114,10 @@ An investor's offer is a commitment with extra fields:
   an investor whatever the model says.
 - **A score you can read.** Out of 100: mandate 25, ticket 20, region 10, risk 10, track record 10, thesis similarity
   10, company stage 10, lead role 5. A firm that paused deployment is left out of both searches and cannot be ranked.
+- **A firm is a team.** The server resolves each investor's firm and role from the database and checks it on every call.
+  Invitations are copy-link: only a digest of the token is stored, the link works once for one address, and a firm cannot
+  lose its last Managing Director. Details in [docs/AUTH.md](docs/AUTH.md).
+- **A badge means one identity.** Only an admin grants Verified, and changing the name or website removes it.
 - **The company gets the last word.** An accepted offer waits for the issuer. Declining locks the need, returns the
   capacity, and publishes an event in one transaction, and reconciliation checks that event like the others.
 - **Fallback over failure.** When the model fails, the circuit breaker is open or the daily token budget is spent, a
@@ -129,8 +137,8 @@ An investor's offer is a commitment with extra fields:
 ## Measured results
 | What | Number | Source |
 |---|---|---|
-| Backend tests | 376, with real Postgres and Kafka | `./mvnw test` |
-| Coverage | 94.6% lines, 86.1% branches | JaCoCo |
+| Backend tests | 388, with real Postgres and Kafka | `./mvnw test` |
+| Coverage | 95.0% lines, 86.0% branches | JaCoCo |
 | Dependency scan | 0 findings in 269 packages | `scripts/dependency-scan.sh` |
 | Commitment throughput* | 619 requests/s, p95 133 ms, 0 errors (one laptop, 50 users, 60 s) | [docs/LOAD_TEST.md](docs/LOAD_TEST.md) |
 | Outbox fix* | backlog after load from 105,334 events to 439 | [docs/LOAD_TEST.md](docs/LOAD_TEST.md) |
@@ -158,8 +166,7 @@ scripts/e2e.sh accounts          # reads backend/.env and backend/.env.admin (AD
 REQUIRE_LIVE_MODEL=true scripts/e2e.sh     # fail the staff test if the app ranked without the model
 ```
 Gemini's free tier allows few requests per day. Once they are spent the app ranks without the model, and the staff test
-accepts that unless you set the flag. A verified badge has no screen yet; grant it with
-`scripts/api.sh PATCH /admin/issuers/<id>/verify '{"verified":true}'`.
+accepts that unless you set the flag.
 When the run ends, passed or failed, `scripts/e2e-cleanup.sh` deletes the test accounts and every row named `E2E%`.
 Run that script by hand after a killed run.
 
@@ -170,6 +177,6 @@ Enable the secret scan hook once per clone: `git config core.hooksPath .githooks
 [Risk engine](docs/RISK.md) · [Interview notes](INTERVIEW_NOTES.md)
 
 ## Limits
-Signup confirms the account at once, so nobody proves they own the email address. Exchange rates are fixed synthetic
+Signup confirms the account at once, so nobody proves they own the email address, and that includes invited teammates. Exchange rates are fixed synthetic
 numbers. Rate limits live in each app instance. Local Kafka has no TLS or authentication. Load numbers describe one
 laptop. I have not deployed it to a host.

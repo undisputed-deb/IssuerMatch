@@ -107,10 +107,11 @@ function CompanyForm({ company, onSaved, onCancel }) {
           </select>
         </Field>
         {input('totalRaisedUsd', 'Raised so far, USD', { type: 'number', min: 0, step: 'any' })}
-      </Section>
-      <Section title="Private: you and our review staff only">
         {input('runwayMonths', 'Runway, months', { type: 'number', min: 0, max: 600, step: 1 })}
         {input('dataRoomUrl', 'Data room link', { type: 'url', maxLength: 500, placeholder: 'https://' })}
+        {company?.verified && (
+          <p className="text-sm text-flag sm:col-span-2">Changing the company name or website removes the Verified badge until we check it again.</p>
+        )}
       </Section>
       <div className="sm:col-span-2">
         <ErrorBox error={state.error} />

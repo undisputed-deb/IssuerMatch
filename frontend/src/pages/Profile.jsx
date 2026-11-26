@@ -18,7 +18,7 @@ const toForm = (p) =>
   Object.fromEntries(Object.entries(EMPTY).map(([k, empty]) => [k, k === 'mandates' ? (p.mandates.length ? p.mandates : empty) : p[k] ?? empty]));
 
 /** The investor's institutional profile. `profile` is null on first sign-in. */
-export default function Profile({ profile, onSaved }) {
+export default function Profile({ profile, onSaved, readOnly = false }) {
   const [form, setForm] = useState(EMPTY);
   const [state, setState] = useState({ busy: false, error: null, saved: false });
   useEffect(() => {
@@ -50,14 +50,20 @@ export default function Profile({ profile, onSaved }) {
 
   return (
     <>
-      <PageTitle title={profile?.profileCompleted ? 'My investor profile' : 'Set up your investor profile'}>
+      <PageTitle title={readOnly ? 'Firm profile' : profile?.profileCompleted ? 'My investor profile' : 'Set up your investor profile'}>
         <span className="flex items-center gap-2">
           <Verified when={profile?.verified} />
           {profile?.profileCompleted ? 'Matching uses this profile.' : 'Complete it before deals can be matched to you.'}
         </span>
       </PageTitle>
       {state.saved && <p role="status" className="mb-4 border-l-4 border-good bg-good-bg px-4 py-3 text-good">Profile saved.</p>}
-      <form onSubmit={save} className="grid max-w-4xl gap-6 sm:grid-cols-2">
+      {readOnly && (
+        <p className="mb-4 border-l-4 border-rule bg-sheet px-4 py-3 text-sm">
+          Read only. A Managing Director of your firm edits the profile and mandates.
+        </p>
+      )}
+      <form onSubmit={save} className="max-w-4xl">
+        <fieldset disabled={readOnly} className="grid min-w-0 gap-6 sm:grid-cols-2">
         <Section title="You and your firm">
           {input('contactName', 'Your name', { required: true, maxLength: 100, autoComplete: 'name' })}
           {input('roleTitle', 'Your role', { required: true, maxLength: 100, placeholder: 'Managing Partner' })}
@@ -133,20 +139,23 @@ export default function Profile({ profile, onSaved }) {
                   ))}
                 </div>
               </fieldset>
-              {form.mandates.length > 1 && (
+              {!readOnly && form.mandates.length > 1 && (
                 <button type="button" className="min-h-11 justify-self-start text-sm text-bad underline"
                   onClick={() => setForm({ ...form, mandates: form.mandates.filter((_, j) => j !== i) })}>Remove mandate {i + 1}</button>
               )}
             </div>
           ))}
-          {form.mandates.length < 10 && (
+          {!readOnly && form.mandates.length < 10 && (
             <Button tone="plain" onClick={() => setForm({ ...form, mandates: [...form.mandates, MANDATE] })}>Add another mandate</Button>
           )}
         </Section>
-        <div className="sm:col-span-2">
-          <ErrorBox error={state.error} />
-          <Button type="submit" busy={state.busy}>Save profile</Button>
-        </div>
+        {!readOnly && (
+          <div className="sm:col-span-2">
+            <ErrorBox error={state.error} />
+            <Button type="submit" busy={state.busy}>Save profile</Button>
+          </div>
+        )}
+        </fieldset>
       </form>
     </>
   );

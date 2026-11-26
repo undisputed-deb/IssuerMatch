@@ -1,5 +1,7 @@
 package com.issuermatch.issuer;
 
+import com.issuermatch.admin.IdentityChange;
+import com.issuermatch.admin.VerificationService;
 import com.issuermatch.audit.AuditService;
 import com.issuermatch.common.ApiException;
 import com.issuermatch.common.NotFoundException;
@@ -26,10 +28,12 @@ class IssuerService {
 
     private final IssuerRepository repo;
     private final AuditService audit;
+    private final VerificationService verification;
 
-    IssuerService(IssuerRepository repo, AuditService audit) {
+    IssuerService(IssuerRepository repo, AuditService audit, VerificationService verification) {
         this.repo = repo;
         this.audit = audit;
+        this.verification = verification;
     }
 
     Issuer create(IssuerDtos.CreateRequest r) {
@@ -64,12 +68,18 @@ class IssuerService {
 
     Issuer update(UUID id, IssuerDtos.UpdateRequest r) {
         Issuer issuer = getWritable(id);
+        String oldName = issuer.getName();
+        String oldWebsite = issuer.getProfile().websiteUrl();
         issuer.update(r.name(), r.sector(), r.region());
         if (r.profile() != null) {
             issuer.describe(checked(r.profile()));
         }
         Issuer saved = repo.saveAndFlush(issuer);
         audit.record("ISSUER_UPDATED", "issuer:" + id, Map.of());
+        if (verification.revokeAfterIdentityChange(VerificationService.Subject.ISSUER, id,
+                IdentityChange.between(oldName, oldWebsite, saved.getName(), saved.getProfile().websiteUrl()))) {
+            saved.badgeWithdrawn();
+        }
         return saved;
     }
 

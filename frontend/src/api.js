@@ -46,11 +46,11 @@ export async function signIn(email, password) {
 }
 
 /** Public signup, then sign in. Only ISSUER and INVESTOR can be chosen; the server enforces it. */
-export async function signUp({ fullName, email, password, role }) {
+export async function signUp({ fullName, email, password, role, inviteToken }) {
   const res = await send(`${API}/auth/signup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ fullName, email, password, role }),
+    body: JSON.stringify({ fullName, email, password, role, inviteToken }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
@@ -72,6 +72,14 @@ async function send(url, options) {
   } catch {
     throw new ApiError(0, 'NETWORK', 'Cannot reach the server. Is it running?');
   }
+}
+
+/** For the invitation page, before anyone is signed in. A stale token is deliberately not sent. */
+async function publicGet(path) {
+  const res = await send(API + path, {});
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(res.status, data?.error?.code || 'ERROR', data?.error?.message || `Request failed (${res.status})`);
+  return data;
 }
 
 // `decision`: a body to accept even with an error status (a blocked offer is a stored answer, sent as 422)
@@ -107,6 +115,16 @@ export const api = {
   commitments: (status) => request(`/commitments?size=50&status=${status}`),
   commitment: (id) => request(`/commitments/${id}`),
   reviewCommitment: (id, approve) => request(`/commitments/${id}/${approve ? 'approve' : 'reject'}`, { method: 'POST' }),
+  newestIssuers: () => request('/issuers?size=100&sort=createdAt,desc'),
+  newestInvestors: () => request('/investors?size=100&sort=createdAt,desc'),
+  verify: (kind, id, verified) => request(`/admin/${kind}/${id}/verify`, { method: 'PATCH', body: { verified } }),
+  team: () => request('/investors/me/team'),
+  invite: (email, orgRole) => request('/investors/me/invites', { method: 'POST', body: { email, orgRole } }),
+  revokeInvite: (id) => request(`/investors/me/invites/${id}`, { method: 'DELETE' }),
+  changeRole: (userId, orgRole) => request(`/investors/me/members/${userId}`, { method: 'PATCH', body: { orgRole } }),
+  removeMember: (userId) => request(`/investors/me/members/${userId}`, { method: 'DELETE' }),
+  invitePreview: (token) => publicGet(`/investor-invites/${encodeURIComponent(token)}/preview`),
+  acceptInvite: (token) => request(`/investor-invites/${encodeURIComponent(token)}/accept`, { method: 'POST' }),
   deadLetters: () => request('/admin/dead-letters?size=50&status=PENDING'),
   replayDeadLetter: (id) => request(`/admin/dead-letters/${id}/replay`, { method: 'POST' }),
   reconciliationLatest: () => request('/admin/reconciliation/latest'),

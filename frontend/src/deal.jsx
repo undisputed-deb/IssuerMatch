@@ -120,7 +120,7 @@ export function Thread({ needId, mode }) {
  * can answer. mode "staff": read only. The server decides which threads come back. The caller loads `thread`
  * ({data, loading, error, reload}), so the investor feed can fetch every deal's questions in one request.
  */
-export function ThreadView({ needId, mode, thread, suggestions = [] }) {
+export function ThreadView({ needId, mode, thread, suggestions = [], canAsk = true }) {
   const [draft, setDraft] = useState('');
   const [state, setState] = useState({ busy: false, error: null });
   const asked = new Set(thread.data?.map((q) => q.question));
@@ -146,23 +146,25 @@ export function ThreadView({ needId, mode, thread, suggestions = [] }) {
             {suggestions.map((q) => (
               <li key={q} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <span className="min-w-0 flex-1 basis-64">{q}</span>
-                <Button tone="plain" disabled={state.busy || !thread.data || asked.has(q)} onClick={() => ask(q, false)}>
-                  {asked.has(q) ? 'Asked' : 'Ask issuer'}
-                </Button>
+                {canAsk && (
+                  <Button tone="plain" disabled={state.busy || !thread.data || asked.has(q)} onClick={() => ask(q, false)}>
+                    {asked.has(q) ? 'Asked' : 'Ask issuer'}
+                  </Button>
+                )}
               </li>
             ))}
           </ul>
         </section>
       )}
       <section aria-label="Questions and answers">
-        <h3 className="font-semibold">{mode === 'investor' ? 'Your questions to the issuer' : 'Investor questions'}</h3>
+        <h3 className="font-semibold">{mode === 'investor' ? 'Your firm’s questions to the issuer' : 'Investor questions'}</h3>
         <ErrorBox error={thread.error} onRetry={thread.reload} />
         {thread.loading && <Loading label="Loading questions" />}
         {thread.data?.length === 0 && <p className="text-sm text-soft">No questions yet.</p>}
         <ul className="mt-1 space-y-3">
           {thread.data?.map((q) => (
             <li key={q.id} className="border-l-4 border-rule pl-3">
-              <p className="text-sm text-soft">{mode === 'investor' ? 'You' : q.investorFirm} · {when(q.createdAt)}</p>
+              <p className="text-sm text-soft">{mode === 'investor' ? 'Your firm' : q.investorFirm} · {when(q.createdAt)}</p>
               <p className="max-w-prose whitespace-pre-wrap break-words font-medium">{q.question}</p>
               {q.answer && <p className="mt-1 max-w-prose whitespace-pre-wrap break-words">{q.answer}</p>}
               {!q.answer && (mode === 'issuer'
@@ -171,7 +173,8 @@ export function ThreadView({ needId, mode, thread, suggestions = [] }) {
             </li>
           ))}
         </ul>
-        {mode === 'investor' && (
+        {mode === 'investor' && !canAsk && <p className="mt-2 text-sm text-soft">Viewers read questions. An Analyst or Managing Director asks them.</p>}
+        {mode === 'investor' && canAsk && (
           <form className="mt-3 space-y-2" onSubmit={(e) => { e.preventDefault(); ask(draft, true); }}>
             <label className="block">
               <span className="text-sm font-medium">Ask your own question</span>

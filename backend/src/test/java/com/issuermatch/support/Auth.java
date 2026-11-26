@@ -40,6 +40,14 @@ public final class Auth {
         return as(userId, "INVESTOR");
     }
 
+    /** An investor whose token carries an email address, as a real Supabase token does. */
+    public static RequestPostProcessor investor(UUID userId, String email) {
+        Jwt jwt = Jwt.withTokenValue("test-token").header("alg", "ES256").subject(userId.toString())
+                .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(3600)).claim("email", email)
+                .claim("app_metadata", Map.of("roles", List.of("INVESTOR"))).build();
+        return SecurityMockMvcRequestPostProcessors.authentication(SupabaseJwtConverter.convert(jwt));
+    }
+
     public static RequestPostProcessor noRoles() {
         return as(UUID.randomUUID());
     }
