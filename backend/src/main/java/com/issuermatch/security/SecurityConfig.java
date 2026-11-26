@@ -68,7 +68,10 @@ class SecurityConfig {
                 // CSRF protects cookie sessions. This API has none: it only accepts an Authorization header.
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(a -> a.requestMatchers("/health").permitAll().anyRequest().authenticated())
+                .authorizeHttpRequests(a -> a
+                        .requestMatchers("/health", "/actuator/health", "/actuator/health/**").permitAll()
+                        .requestMatchers("/actuator/**").hasRole(Role.ADMIN.name())
+                        .anyRequest().authenticated())
                 .oauth2ResourceServer(o -> o
                         .jwt(j -> j.jwtAuthenticationConverter(SupabaseJwtConverter::convert))
                         .authenticationEntryPoint(unauthorized)

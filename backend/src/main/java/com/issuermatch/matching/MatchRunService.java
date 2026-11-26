@@ -1,6 +1,7 @@
 package com.issuermatch.matching;
 
 import com.issuermatch.audit.AuditService;
+import com.issuermatch.common.AppMetrics;
 import com.issuermatch.matching.agent.MatchAgent;
 import com.issuermatch.matching.agent.PromptInjectionDetector;
 import com.issuermatch.matching.agent.MatchingTools;
@@ -36,8 +37,11 @@ public class MatchRunService {
     private final MatchingTools tools;
     private final OutboxService outbox;
     private final AuditService audit;
+    private final AppMetrics metrics;
 
-    MatchRunService(JdbcTemplate db, JsonMapper json, MatchingTools tools, OutboxService outbox, AuditService audit) {
+    MatchRunService(JdbcTemplate db, JsonMapper json, MatchingTools tools, OutboxService outbox, AuditService audit,
+                    AppMetrics metrics) {
+        this.metrics = metrics;
         this.audit = audit;
         this.db = db;
         this.json = json;
@@ -99,6 +103,7 @@ public class MatchRunService {
                     json.writeValueAsString(s.entry().citedTools()));
         }
         announce(runId, needId, "PENDING_REVIEW", ranked.size());
+        metrics.matchFinished("PENDING_REVIEW", Duration.ofMillis(run.latencyMs()), run.tokensIn(), run.tokensOut());
     }
 
     /** @param message safe to store and show (no provider details, no secrets) */
@@ -109,6 +114,10 @@ public class MatchRunService {
         if (changed == 1) {
             releaseNeed(needId);
             announce(runId, needId, "FAILED", 0);
+            // a failed run has no reliable token count; its duration is measured from the claim
+            Double seconds = db.queryForObject("SELECT extract(epoch FROM clock_timestamp() - coalesce(started_at, clock_timestamp()))"
+                    + " FROM match_runs WHERE id = ?", Double.class, runId);
+            metrics.matchFinished("FAILED", Duration.ofMillis(seconds == null ? 0 : (long) (seconds * 1000)), 0, 0);
         }
     }
 

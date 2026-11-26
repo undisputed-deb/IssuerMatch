@@ -10,6 +10,7 @@ import com.issuermatch.commitment.risk.RiskEngine;
 import com.issuermatch.commitment.risk.RiskFacts;
 import com.issuermatch.commitment.risk.Verdict;
 import com.issuermatch.common.ApiException;
+import com.issuermatch.common.AppMetrics;
 import com.issuermatch.common.NotFoundException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -39,9 +40,11 @@ class CommitmentService {
     private final AuditService audit;
     private final RiskEngine risk;
     private final CommitmentEvents events;
+    private final AppMetrics metrics;
 
     CommitmentService(JdbcTemplate db, IdempotencyService idempotency, JsonMapper json, AuditService audit, RiskEngine risk,
-                      CommitmentEvents events) {
+                      CommitmentEvents events, AppMetrics metrics) {
+        this.metrics = metrics;
         this.events = events;
         this.db = db;
         this.idempotency = idempotency;
@@ -110,6 +113,7 @@ class CommitmentService {
                 ((java.sql.Timestamp) created.get("created_at")).toInstant());
 
         // Only a real decision is audited. A replay (same Idempotency-Key) never reaches this line.
+        metrics.commitmentDecided(status);
         audit.record("COMMITMENT_" + status, "commitment:" + id,
                 Map.of("needId", r.needId().toString(), "investorId", r.investorId().toString(),
                         "amount", r.amount().toPlainString()));

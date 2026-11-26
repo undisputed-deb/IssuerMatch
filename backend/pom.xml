@@ -91,6 +91,12 @@
 			<version>8.23.0</version>
 		</dependency>
 
+		<!-- Health checks and metrics (match latency, tokens, consumer lag) -->
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-actuator</artifactId>
+		</dependency>
+
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-flyway</artifactId>
