@@ -1,0 +1,45 @@
+@import 'tailwindcss';
+
+/* Ledger look: warm paper, ink text, one working blue, amber only for "look at this". */
+@theme {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --color-paper: #f7f6f2;
+  --color-sheet: #ffffff;
+  --color-ink: #14213d;
+  --color-soft: #4a5568;
+  --color-rule: #d9d5ca;
+  --color-brand: #1e40af;
+  --color-brand-dark: #17327f;
+  --color-flag: #92400e;
+  --color-flag-bg: #fef3c7;
+  --color-good: #166534;
+  --color-good-bg: #dcfce7;
+  --color-bad: #991b1b;
+  --color-bad-bg: #fee2e2;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  line-height: 1.55;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+button:not(:disabled),
+summary,
+a[href] {
+  cursor: pointer;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

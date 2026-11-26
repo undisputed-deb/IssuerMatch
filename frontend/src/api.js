@@ -1,0 +1,94 @@
+// The only file that talks to the network. Everything else calls these functions.
+const API = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY; // publishable, safe in a browser
+const TOKEN_KEY = 'issuermatch.token'; // sessionStorage: gone when the tab closes
+
+export class ApiError extends Error {
+  constructor(status, code, message) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
+
+let onSignedOut = () => {};
+export const setSignedOutHandler = (fn) => {
+  onSignedOut = fn;
+};
+
+/** Reads claims for DISPLAY only (which tabs to show). The server verifies the token and enforces every rule. */
+export function currentUser() {
+  const token = sessionStorage.getItem(TOKEN_KEY);
+  if (!token) return null;
+  try {
+    const part = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const claims = JSON.parse(atob(part.padEnd(Math.ceil(part.length / 4) * 4, '=')));
+    if (claims.exp * 1000 < Date.now()) return null;
+    return { id: claims.sub, email: claims.email, roles: claims.app_metadata?.roles ?? [] };
+  } catch {
+    return null;
+  }
+}
+
+export async function signIn(email, password) {
+  const res = await send(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.access_token) {
+    throw new ApiError(res.status, 'LOGIN_FAILED', body.msg || body.error_description || 'Login failed');
+  }
+  sessionStorage.setItem(TOKEN_KEY, body.access_token);
+  return currentUser();
+}
+
+export function signOut() {
+  sessionStorage.removeItem(TOKEN_KEY);
+  onSignedOut();
+}
+
+async function send(url, options) {
+  try {
+    return await fetch(url, options);
+  } catch {
+    throw new ApiError(0, 'NETWORK', 'Cannot reach the server. Is it running?');
+  }
+}
+
+async function request(path, { method = 'GET', body, headers = {} } = {}) {
+  const res = await send(API + path, {
+    method,
+    headers: {
+      Authorization: `Bearer ${sessionStorage.getItem(TOKEN_KEY)}`,
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+      ...headers,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) {
+    signOut();
+    throw new ApiError(401, 'UNAUTHORIZED', 'Your session ended. Sign in again.');
+  }
+  const data = res.status === 204 ? null : await res.json().catch(() => null);
+  if (!res.ok) {
+    const wait = res.headers.get('Retry-After');
+    const message = data?.error?.message || `Request failed (${res.status})`;
+    throw new ApiError(res.status, data?.error?.code || 'ERROR', wait ? `${message}. Try again in ${wait}s.` : message);
+  }
+  return data;
+}
+
+export const api = {
+  issuers: () => request('/issuers?size=100&sort=name,asc'),
+  needs: () => request('/funding-needs?size=100&sort=createdAt,desc'),
+  need: (id) => request(`/funding-needs/${id}`),
+  submitNeed: (need) => request('/funding-needs', { method: 'POST', body: need }),
+  rematch: (id) => request(`/funding-needs/${id}/match`, { method: 'POST' }),
+  runs: (page = 0) => request(`/match-runs?size=20&page=${page}`),
+  run: (id) => request(`/match-runs/${id}`),
+  results: (id) => request(`/match-runs/${id}/results`),
+  review: (id, approve) => request(`/match-runs/${id}/${approve ? 'approve' : 'reject'}`, { method: 'POST' }),
+};
