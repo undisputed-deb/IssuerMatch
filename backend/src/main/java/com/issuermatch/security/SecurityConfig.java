@@ -22,6 +22,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import tools.jackson.databind.json.JsonMapper;
@@ -34,11 +35,12 @@ import tools.jackson.databind.json.JsonMapper;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-@EnableConfigurationProperties(AuthProperties.class)
+@EnableConfigurationProperties({AuthProperties.class, RateLimitProperties.class})
 class SecurityConfig {
 
     @Bean
-    SecurityFilterChain filterChain(HttpSecurity http, JsonMapper json) throws Exception {
+    SecurityFilterChain filterChain(HttpSecurity http, JsonMapper json, RateLimiter limiter, RateLimitProperties limits)
+            throws Exception {
         AuthenticationEntryPoint unauthorized = (request, response, e) -> {
             response.setHeader("WWW-Authenticate", "Bearer");
             write(json, response, HttpStatus.UNAUTHORIZED, "UNAUTHORIZED", "Authentication required"); // no hint about why
@@ -47,6 +49,8 @@ class SecurityConfig {
                 write(json, response, HttpStatus.FORBIDDEN, "FORBIDDEN", "Access denied");
 
         http
+                .addFilterBefore(RateLimitFilters.perIp(limiter, limits), BearerTokenAuthenticationFilter.class)
+                .addFilterAfter(RateLimitFilters.perUser(limiter, limits), BearerTokenAuthenticationFilter.class)
                 // CSRF protects cookie sessions. This API has none: it only accepts an Authorization header.
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

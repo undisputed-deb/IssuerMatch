@@ -11,6 +11,7 @@ All in one database transaction.
 - Apple M4 laptop, 10 cores, 16 GB. App (Java 21, packaged jar, default 10-connection pool), PostgreSQL 17 and Kafka 3.9
   (Docker, 10 CPUs, about 7.7 GB) and k6 2.4.0 all on the same machine.
 - Local database, so there is no network latency to a hosted database. It never touches Supabase.
+- Rate limiting is switched off for this run (`APP_RATELIMIT_ENABLED=false`): one test user would otherwise hit the 120 per minute cap.
 - Synthetic data: 20,000 investors, 200 funding needs. 50 virtual users, 20 s warm-up, then 60 s measured. Random amounts.
 - 201 (accepted), 202 (flagged) and 422 (blocked by a rule) are all correct answers. Anything else counts as a failure.
 

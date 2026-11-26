@@ -25,7 +25,7 @@ docker compose --profile load up -d --wait kafka postgres-load >/dev/null 2>&1
 
 # Environment variables override backend/.env, so the database below is the local throwaway one.
 (cd backend && exec env SUPABASE_DB_URL=jdbc:postgresql://localhost:5433/postgres SUPABASE_DB_USER=postgres \
-  SUPABASE_DB_PASSWORD=unused java -jar target/issuermatch-0.0.1-SNAPSHOT.jar) > "$out/app.log" 2>&1 &
+  SUPABASE_DB_PASSWORD=unused APP_RATELIMIT_ENABLED=false java -jar target/issuermatch-0.0.1-SNAPSHOT.jar) > "$out/app.log" 2>&1 &
 app_pid=$!
 i=0; until curl -sf localhost:8080/health >/dev/null; do
   i=$((i+1)); [ $i -gt 60 ] && { echo "app did not start, see $out/app.log"; exit 1; }; sleep 1; done
