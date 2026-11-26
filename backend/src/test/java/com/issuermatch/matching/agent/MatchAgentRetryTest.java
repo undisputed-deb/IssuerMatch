@@ -39,7 +39,7 @@ class MatchAgentRetryTest {
         needId = db.queryForObject("INSERT INTO funding_needs(issuer_id,title,description,sector,region,amount,instrument,"
                 + "risk_level,remaining_capacity) VALUES (?,'t','d','FINTECH','EUROPE',1234567,'EQUITY','MEDIUM',1234567) RETURNING id",
                 UUID.class, issuerId);
-        investorId = db.queryForObject("INSERT INTO investors(name,type,region) VALUES (?,'VC','EUROPE') RETURNING id",
+        investorId = db.queryForObject("INSERT INTO investors(name,investor_type,region) VALUES (?,'VC','EUROPE') RETURNING id",
                 UUID.class, "Retry Inv " + UUID.randomUUID());
         // A ticket range only this test's need fits, so other tests' investors cannot interfere with the assertions.
         db.update("INSERT INTO mandates(investor_id,sector,region,min_ticket,max_ticket,risk_level,instruments)"

@@ -27,7 +27,7 @@ class MyInvestorProfileController {
     }
 
     @PutMapping
-    InvestorDtos.InvestorResponse save(@Valid @RequestBody InvestorDtos.InvestorRequest request) {
+    InvestorDtos.InvestorResponse save(@Valid @RequestBody InvestorDtos.ProfileRequest request) {
         return service.saveMine(CurrentUser.get().id(), request);
     }
 }

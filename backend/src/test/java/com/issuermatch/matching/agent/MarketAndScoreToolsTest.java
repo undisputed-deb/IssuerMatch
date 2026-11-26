@@ -27,7 +27,7 @@ class MarketAndScoreToolsTest {
     }
 
     UUID investorWithMandates(String... mandateValues) { // each: sector,region,min,max,risk
-        UUID inv = db.queryForObject("INSERT INTO investors(name,type,region) VALUES (?,'VC','EUROPE') RETURNING id",
+        UUID inv = db.queryForObject("INSERT INTO investors(name,investor_type,region) VALUES (?,'VC','EUROPE') RETURNING id",
                 UUID.class, "I " + UUID.randomUUID());
         for (String m : mandateValues) {
             String[] p = m.split(",");

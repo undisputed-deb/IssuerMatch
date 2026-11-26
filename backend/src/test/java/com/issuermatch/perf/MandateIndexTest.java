@@ -26,7 +26,7 @@ class MandateIndexTest {
 
     @Test
     void indexIsUsedAndFasterThanSeqScan() {
-        db.update("INSERT INTO investors(name,type,region) SELECT 'Inv ' || g, 'VC', 'EUROPE' FROM generate_series(1,2000) g");
+        db.update("INSERT INTO investors(name,investor_type,region) SELECT 'Inv ' || g, 'VC', 'EUROPE' FROM generate_series(1,2000) g");
         db.update("""
                 INSERT INTO mandates(investor_id,sector,region,min_ticket,max_ticket,risk_level,instruments)
                 SELECT (SELECT id FROM investors WHERE name = 'Inv ' || (1 + (g % 2000))),

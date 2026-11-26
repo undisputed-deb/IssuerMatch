@@ -22,7 +22,7 @@ class SearchInvestorsToolTest {
     @Autowired JdbcTemplate db;
 
     UUID investor(String name) {
-        return db.queryForObject("INSERT INTO investors(name,type,region) VALUES (?,'VC','EUROPE') RETURNING id",
+        return db.queryForObject("INSERT INTO investors(name,investor_type,region) VALUES (?,'VC','EUROPE') RETURNING id",
                 UUID.class, name + UUID.randomUUID());
     }
 

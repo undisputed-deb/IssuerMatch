@@ -37,7 +37,14 @@ test('an investor signs up, is sent to onboarding, saves a profile and sees an e
   await createAccount(page, 'Investor', 'investor');
   await expect(page.getByRole('heading', { name: 'Set up your investor profile' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Match runs' })).toHaveCount(0);
+  await page.getByLabel('Your name').fill('Ivy Chen');
+  await page.getByLabel('Your role').fill('Managing Partner');
   await page.getByLabel('Firm name').fill(`E2E Fund ${Date.now()}`);
+  await page.getByLabel('Deployable capital, USD').fill('25000000');
+  await page.getByLabel('What you invest in, and what you do not').fill('We back European fintech with at least 1M ARR. No gambling.');
+  await page.getByLabel('Smallest ticket (USD)').fill('100000');
+  await page.getByLabel('Largest ticket (USD)').fill('2000000');
+  await page.screenshot({ path: `${shots}/investor-profile.png`, fullPage: true });
   await page.getByRole('button', { name: 'Save profile' }).click();
   await page.getByRole('link', { name: 'Matched deals' }).click();
   await expect(page.getByText('No deals yet')).toBeVisible();

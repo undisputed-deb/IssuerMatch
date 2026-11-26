@@ -1,6 +1,6 @@
 -- Synthetic load-test data: 20,000 investors, 200 funding needs, each investor approved for exactly one need.
 -- Many investors so that normal traffic does not trip the velocity rule; amounts are random per request.
-INSERT INTO investors(name, type, region) SELECT 'Load Investor ' || g, 'VC', 'EUROPE' FROM generate_series(1, 20000) g;
+INSERT INTO investors(name, investor_type, region) SELECT 'Load Investor ' || g, 'VC', 'EUROPE' FROM generate_series(1, 20000) g;
 INSERT INTO mandates(investor_id, sector, region, min_ticket, max_ticket, risk_level, instruments)
 SELECT id, 'FINTECH', 'EUROPE', 1, 1000000000, 'MEDIUM', ARRAY['EQUITY'] FROM investors;
 INSERT INTO issuers(name, sector, region, owner_user_id)

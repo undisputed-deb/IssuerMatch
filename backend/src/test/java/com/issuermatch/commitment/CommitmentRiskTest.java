@@ -54,7 +54,7 @@ class CommitmentRiskTest {
         needId = db.queryForObject("INSERT INTO funding_needs(issuer_id,title,description,sector,region,amount,instrument,"
                 + "risk_level,remaining_capacity) VALUES (?,'t','d','FINTECH','EUROPE',10000000,'EQUITY','MEDIUM',10000000) RETURNING id",
                 UUID.class, issuerId);
-        investorId = db.queryForObject("INSERT INTO investors(name,type,region) VALUES (?,'VC','EUROPE') RETURNING id",
+        investorId = db.queryForObject("INSERT INTO investors(name,investor_type,region) VALUES (?,'VC','EUROPE') RETURNING id",
                 UUID.class, "Risk Inv " + UUID.randomUUID());
         db.update("INSERT INTO mandates(investor_id,sector,region,min_ticket,max_ticket,risk_level,instruments)"
                 + " VALUES (?,'FINTECH','EUROPE',100000,1000000,'MEDIUM','{EQUITY}')", investorId);

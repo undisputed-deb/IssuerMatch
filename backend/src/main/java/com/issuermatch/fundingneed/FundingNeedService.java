@@ -52,7 +52,9 @@ class FundingNeedService {
             throw new NotFoundException("Issuer not found");
         }
         FundingNeed need = needs.saveAndFlush(new FundingNeed(r.issuerId(), r.title(), r.description(), r.sector(),
-                r.region(), r.amount(), r.instrument(), r.riskLevel()));
+                r.region(), r.amount(), r.instrument(), r.riskLevel())
+                .withIntake(r.currency(), r.companyStage(), r.targetCloseDate(), r.useOfFunds(), r.minTicketSize(),
+                        r.hardConstraints(), r.instrumentTerms()));
         requestMatching(need, me);
         // ids and numbers only. The title and description are free text and stay out of the audit trail.
         audit.record("FUNDING_NEED_SUBMITTED", "funding-need:" + need.getId(),

@@ -33,7 +33,7 @@ public class MatchingTools {
         this.db = db;
     }
 
-    public record InvestorHit(UUID investorId, String name, String type, BigDecimal minTicket,
+    public record InvestorHit(UUID investorId, String name, String investorType, BigDecimal minTicket,
                               BigDecimal maxTicket, String riskLevel, List<String> instruments) {}
 
     @Tool(description = "Find investors that have a mandate for the given sector and region whose ticket range "
@@ -47,11 +47,11 @@ public class MatchingTools {
         }
         // Uses idx_mandates_match: equality on sector+region first, then the ticket range.
         List<InvestorHit> rows = db.query(
-                "SELECT i.id, i.name, i.type, m.min_ticket, m.max_ticket, m.risk_level, m.instruments"
+                "SELECT i.id, i.name, i.investor_type, m.min_ticket, m.max_ticket, m.risk_level, m.instruments"
                         + " FROM mandates m JOIN investors i ON i.id = m.investor_id"
                         + " WHERE m.sector = ? AND m.region = ? AND m.min_ticket <= ? AND m.max_ticket >= ?"
                         + " ORDER BY i.name, m.min_ticket LIMIT 100",
-                (rs, n) -> new InvestorHit(rs.getObject("id", UUID.class), rs.getString("name"), rs.getString("type"),
+                (rs, n) -> new InvestorHit(rs.getObject("id", UUID.class), rs.getString("name"), rs.getString("investor_type"),
                         rs.getBigDecimal("min_ticket"), rs.getBigDecimal("max_ticket"), rs.getString("risk_level"),
                         List.of((String[]) rs.getArray("instruments").getArray())),
                 sector.name(), region.name(), ticketSize, ticketSize);

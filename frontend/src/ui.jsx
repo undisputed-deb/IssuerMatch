@@ -106,7 +106,10 @@ export function PageTitle({ title, children }) {
 
 export const money = (v) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(v);
 export const when = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—');
-export const words = (v) => v.toLowerCase().replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+const AS_IS = new Set(['USD', 'EUR', 'GBP', 'CHF', 'JPY', 'INR', 'SGD', 'AUD', 'CAD', 'AED', 'VC', 'PE', 'MEA', 'LATAM']);
+export const words = (v) =>
+  AS_IS.has(v) ? v : v.toLowerCase().replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase())
+    .replace(/\bvc\b/i, 'VC').replace('Series b plus', 'Series B+').replace('Series a', 'Series A');
 
 export const control = 'mt-1 min-h-11 w-full rounded-sm border border-ink/30 bg-sheet px-3';
 
@@ -133,3 +136,28 @@ export const SECTORS = ['TECHNOLOGY', 'FINTECH', 'HEALTHCARE', 'ENERGY', 'REAL_E
 export const REGIONS = ['NORTH_AMERICA', 'EUROPE', 'ASIA_PACIFIC', 'LATAM', 'MEA'];
 export const INSTRUMENTS = ['EQUITY', 'DEBT', 'CONVERTIBLE', 'MEZZANINE'];
 export const RISKS = ['LOW', 'MEDIUM', 'HIGH'];
+
+export const CURRENCIES = ['USD', 'EUR', 'GBP', 'CHF', 'JPY', 'INR', 'SGD', 'AUD', 'CAD', 'AED'];
+export const STAGES = ['PRE_SEED', 'SEED', 'SERIES_A', 'SERIES_B_PLUS', 'GROWTH', 'MIDDLE_MARKET'];
+export const INVESTOR_TYPES = ['VC', 'PE', 'PRIVATE_CREDIT', 'FAMILY_OFFICE', 'CORPORATE_VC', 'ANGEL_SYNDICATE'];
+
+/** Empty text becomes "not given" (null); otherwise a number. */
+export const number = (v) => (v === '' || v == null ? null : Number(v));
+
+export function Input({ label, wide, hint, ...props }) {
+  return (
+    <Field label={label} wide={wide}>
+      <input {...props} className={`${control} ${props.type === 'number' ? 'font-mono' : ''}`} />
+      {hint && <span className="text-xs text-soft">{hint}</span>}
+    </Field>
+  );
+}
+
+export function Section({ title, children }) {
+  return (
+    <fieldset className="grid gap-4 border-t border-rule pt-4 sm:col-span-2 sm:grid-cols-2">
+      <legend className="pr-3 text-lg font-semibold">{title}</legend>
+      {children}
+    </fieldset>
+  );
+}

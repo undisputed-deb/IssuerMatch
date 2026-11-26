@@ -52,7 +52,7 @@ class CommitmentCapacityTest {
         UUID run = db.queryForObject("INSERT INTO match_runs(need_id,event_id,status) VALUES (?,?,'APPROVED') RETURNING id",
                 UUID.class, needId, UUID.randomUUID());
         for (int i = 0; i < n; i++) {
-            UUID inv = db.queryForObject("INSERT INTO investors(name,type,region) VALUES (?,'VC','EUROPE') RETURNING id",
+            UUID inv = db.queryForObject("INSERT INTO investors(name,investor_type,region) VALUES (?,'VC','EUROPE') RETURNING id",
                     UUID.class, "Cap Inv " + UUID.randomUUID());
             investors.add(inv);
             db.update("INSERT INTO mandates(investor_id,sector,region,min_ticket,max_ticket,risk_level,instruments)"

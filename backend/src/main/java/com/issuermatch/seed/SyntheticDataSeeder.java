@@ -58,8 +58,14 @@ public class SyntheticDataSeeder {
 
     private void seedInvestor(Random rnd, String name) {
         Region region = pick(rnd, Region.values());
-        UUID id = db.queryForObject("INSERT INTO investors(name,type,region) VALUES (?,?,?) RETURNING id",
-                UUID.class, name, pick(rnd, InvestorType.values()).name(), region.name());
+        Sector focus = pick(rnd, Sector.values());
+        long deployable = (5 + rnd.nextInt(200)) * 1_000_000L;
+        UUID id = db.queryForObject("INSERT INTO investors(name,investor_type,region,contact_name,role_title,company_name,"
+                        + "aum_or_revenue_usd,deployable_capital_usd,currency,long_thesis_description,profile_completed)"
+                        + " VALUES (?,?,?,?,?,?,?,?,'USD',?,true) RETURNING id",
+                UUID.class, name, pick(rnd, InvestorType.values()).name(), region.name(),
+                "Contact " + name.split(" ")[0], TITLES[rnd.nextInt(TITLES.length)], name,
+                BigDecimal.valueOf(deployable * 6), BigDecimal.valueOf(deployable), thesis(rnd, focus, region));
         int deals = rnd.nextInt(5); // 0..4 past deals
         for (int d = 0; d < deals; d++) {
             long amount = (1 + rnd.nextInt(40)) * 250_000L;
@@ -99,6 +105,22 @@ public class SyntheticDataSeeder {
                     sector.name(), region.name(), BigDecimal.valueOf(amount), instrument.name(),
                     pick(rnd, RiskLevel.values()).name(), BigDecimal.valueOf(amount));
         }
+    }
+
+    private static final String[] TITLES = {"Managing Partner", "VP Investments", "Principal", "Investment Director"};
+    private static final String[] TRACTION = {"at least 1M of annual recurring revenue", "paying customers and a clear path to profit",
+            "two years of audited revenue", "positive unit economics"};
+    private static final String[] VALUE_ADD = {"hiring senior leaders", "opening new markets", "arranging follow-on debt",
+            "building enterprise sales"};
+    private static final String[] EXCLUSIONS = {"gambling", "tobacco", "pre-revenue hardware", "highly leveraged buyouts"};
+
+    /** An invented investment thesis, so semantic search has something real to compare against. */
+    private static String thesis(Random rnd, Sector focus, Region region) {
+        String sector = focus.name().toLowerCase().replace('_', ' ');
+        return "We invest in " + sector + " companies in " + region.name().toLowerCase().replace('_', ' ') + " with "
+                + TRACTION[rnd.nextInt(TRACTION.length)] + ". We add value by " + VALUE_ADD[rnd.nextInt(VALUE_ADD.length)]
+                + ". We do not invest in " + EXCLUSIONS[rnd.nextInt(EXCLUSIONS.length)] + ". Past portfolio highlights include "
+                + ISSUER_PREFIX[rnd.nextInt(10)] + " " + ISSUER_SUFFIX[rnd.nextInt(2)] + " in " + sector + ".";
     }
 
     private static String instrumentArray(Random rnd) {

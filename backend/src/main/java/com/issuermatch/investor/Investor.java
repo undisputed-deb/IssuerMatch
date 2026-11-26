@@ -2,6 +2,7 @@ package com.issuermatch.investor;
 
 import com.issuermatch.common.Region;
 import jakarta.persistence.*;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,9 +16,18 @@ public class Investor {
 
     @Id @GeneratedValue(strategy = GenerationType.UUID) private UUID id;
     private String name;
-    @Enumerated(EnumType.STRING) private InvestorType type;
+    @Enumerated(EnumType.STRING) private InvestorType investorType;
     @Enumerated(EnumType.STRING) private Region region;
     private UUID ownerUserId; // null for profiles entered by staff
+    private String contactName;
+    private String roleTitle;
+    private String companyName;
+    private String websiteUrl;
+    private BigDecimal aumOrRevenueUsd;
+    private BigDecimal deployableCapitalUsd;
+    private String currency = "USD";
+    private String longThesisDescription;
+    private boolean profileCompleted;
     @CreationTimestamp private Instant createdAt;
 
     // N+1 fix: load mandates for up to 100 investors in ONE query (WHERE investor_id IN (...)).
@@ -28,16 +38,30 @@ public class Investor {
 
     protected Investor() {}
 
-    public Investor(String name, InvestorType type, Region region) {
+    public Investor(String name, InvestorType investorType, Region region) {
         this.name = name;
-        this.type = type;
+        this.investorType = investorType;
         this.region = region;
     }
 
-    public void update(String name, InvestorType type, Region region) {
+    public void update(String name, InvestorType investorType, Region region) {
         this.name = name;
-        this.type = type;
+        this.investorType = investorType;
         this.region = region;
+    }
+
+    /** The full institutional profile, given by the investor. All required parts are validated, so it is complete. */
+    public void completeProfile(InvestorDtos.ProfileRequest p) {
+        update(p.companyName(), p.investorType(), p.region());
+        this.contactName = p.contactName();
+        this.roleTitle = p.roleTitle();
+        this.companyName = p.companyName();
+        this.websiteUrl = p.websiteUrl();
+        this.aumOrRevenueUsd = p.aumOrRevenueUsd();
+        this.deployableCapitalUsd = p.deployableCapitalUsd();
+        this.currency = p.currency();
+        this.longThesisDescription = p.longThesisDescription();
+        this.profileCompleted = true;
     }
 
     /** Link the profile to the user who owns it. Set once, at creation. */
@@ -49,7 +73,16 @@ public class Investor {
     public UUID getId() { return id; }
     public UUID getOwnerUserId() { return ownerUserId; }
     public String getName() { return name; }
-    public InvestorType getType() { return type; }
+    public InvestorType getInvestorType() { return investorType; }
+    public String getContactName() { return contactName; }
+    public String getRoleTitle() { return roleTitle; }
+    public String getCompanyName() { return companyName; }
+    public String getWebsiteUrl() { return websiteUrl; }
+    public BigDecimal getAumOrRevenueUsd() { return aumOrRevenueUsd; }
+    public BigDecimal getDeployableCapitalUsd() { return deployableCapitalUsd; }
+    public String getCurrency() { return currency; }
+    public String getLongThesisDescription() { return longThesisDescription; }
+    public boolean isProfileCompleted() { return profileCompleted; }
     public Region getRegion() { return region; }
     public Instant getCreatedAt() { return createdAt; }
     public List<Mandate> getMandates() { return mandates; }

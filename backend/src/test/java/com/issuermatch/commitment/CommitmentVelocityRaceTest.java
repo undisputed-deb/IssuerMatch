@@ -42,7 +42,7 @@ class CommitmentVelocityRaceTest {
     }
 
     void givenOneInvestorApprovedForManyNeeds(int count) {
-        investorId = db.queryForObject("INSERT INTO investors(name,type,region) VALUES (?,'VC','EUROPE') RETURNING id",
+        investorId = db.queryForObject("INSERT INTO investors(name,investor_type,region) VALUES (?,'VC','EUROPE') RETURNING id",
                 UUID.class, "Burst Inv " + UUID.randomUUID());
         db.update("INSERT INTO mandates(investor_id,sector,region,min_ticket,max_ticket,risk_level,instruments)"
                 + " VALUES (?,'FINTECH','EUROPE',1,100000000,'MEDIUM','{EQUITY}')", investorId);

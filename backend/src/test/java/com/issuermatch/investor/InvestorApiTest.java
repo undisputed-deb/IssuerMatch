@@ -24,7 +24,7 @@ class InvestorApiTest {
     }
 
     String investor(String name) throws Exception {
-        String res = send(post("/investors"), "{\"name\":\"" + name + "\",\"type\":\"VC\",\"region\":\"EUROPE\"}")
+        String res = send(post("/investors"), "{\"name\":\"" + name + "\",\"investorType\":\"VC\",\"region\":\"EUROPE\"}")
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
         return res.replaceAll(".*\"id\":\"([^\"]+)\".*", "$1");
     }
@@ -46,8 +46,8 @@ class InvestorApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.mandates", hasSize(1)))
                 .andExpect(jsonPath("$.mandates[0].minTicket").value(100000));
-        send(put("/investors/" + id), "{\"name\":\"Alpha 2\",\"type\":\"PE\",\"region\":\"LATAM\"}")
-                .andExpect(status().isOk()).andExpect(jsonPath("$.type").value("PE"));
+        send(put("/investors/" + id), "{\"name\":\"Alpha 2\",\"investorType\":\"PE\",\"region\":\"LATAM\"}")
+                .andExpect(status().isOk()).andExpect(jsonPath("$.investorType").value("PE"));
         mvc.perform(delete("/investors/" + id)).andExpect(status().isNoContent());
         mvc.perform(get("/investors/" + id)).andExpect(status().isNotFound());
     }

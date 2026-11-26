@@ -99,7 +99,7 @@ function InvestorArea({ user }) {
   }, []);
   const [saved, setSaved] = useState(null);
   const current = saved ?? profile.data?.value ?? null;
-  const complete = Boolean(current);
+  const complete = Boolean(current?.profileCompleted);
   const tabs = complete ? [['deals', 'Matched deals'], ['profile', 'My profile']] : [['profile', 'Set up profile']];
   const active = complete && page !== 'profile' ? 'deals' : 'profile';
   return (

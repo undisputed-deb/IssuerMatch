@@ -31,7 +31,7 @@ class SchemaTest {
 
     UUID investor() {
         return db.queryForObject(
-                "INSERT INTO investors(name,type,region) VALUES (?,?,?) RETURNING id", UUID.class,
+                "INSERT INTO investors(name,investor_type,region) VALUES (?,?,?) RETURNING id", UUID.class,
                 "Inv " + UUID.randomUUID(), "VC", "EUROPE");
     }
 

@@ -29,7 +29,7 @@ class RoleIsolationTest {
     final UUID otto = UUID.randomUUID();
 
     UUID investorOwnedBy(UUID owner) {
-        return db.queryForObject("INSERT INTO investors(name,type,region,owner_user_id) VALUES (?,'VC','EUROPE',?) RETURNING id",
+        return db.queryForObject("INSERT INTO investors(name,investor_type,region,owner_user_id) VALUES (?,'VC','EUROPE',?) RETURNING id",
                 UUID.class, "Iso Inv " + UUID.randomUUID(), owner);
     }
 
@@ -102,7 +102,7 @@ class RoleIsolationTest {
     // ---------- own profile ----------
 
     String profile(String name) {
-        return "{\"name\":\"" + name + "\",\"type\":\"VC\",\"region\":\"EUROPE\"}";
+        return com.issuermatch.support.Profiles.json(name);
     }
 
     @Test
@@ -124,7 +124,7 @@ class RoleIsolationTest {
             mvc.perform(get("/investors/me").with(user)).andExpect(status().isForbidden());
         }
         mvc.perform(put("/investors/me").with(Auth.investor(ivy)).contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"x\",\"type\":\"VC\",\"region\":\"EUROPE\",\"ownerUserId\":\"" + otto + "\"}"))
+                        .content(profile("x").replaceFirst("\\{", "{\"ownerUserId\":\"" + otto + "\",")))
                 .andExpect(status().isBadRequest());
     }
 

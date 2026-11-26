@@ -35,7 +35,7 @@ class MatchRunServiceTest {
 
     /** sector,region,min,max,risk */
     UUID investor(String mandate) {
-        UUID inv = db.queryForObject("INSERT INTO investors(name,type,region) VALUES (?,'VC','EUROPE') RETURNING id",
+        UUID inv = db.queryForObject("INSERT INTO investors(name,investor_type,region) VALUES (?,'VC','EUROPE') RETURNING id",
                 UUID.class, "I " + UUID.randomUUID());
         String[] p = mandate.split(",");
         db.update("INSERT INTO mandates(investor_id,sector,region,min_ticket,max_ticket,risk_level,instruments)"

@@ -3,6 +3,7 @@ package com.issuermatch.investor;
 import com.issuermatch.audit.AuditService;
 import com.issuermatch.common.NotFoundException;
 import com.issuermatch.investor.InvestorDtos.*;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -29,24 +30,31 @@ class InvestorService {
 
     @Transactional(readOnly = true)
     InvestorResponse mine(UUID userId) {
-        return InvestorResponse.from(investors.findByOwnerUserId(userId)
-                .orElseThrow(() -> new NotFoundException("You have no investor profile yet")));
+        Investor investor = investors.findByOwnerUserId(userId)
+                .orElseThrow(() -> new NotFoundException("You have no investor profile yet"));
+        return InvestorResponse.from(investor, mandates.findAllByInvestorId(investor.getId()));
     }
 
-    InvestorResponse saveMine(UUID userId, InvestorRequest r) {
+    InvestorResponse saveMine(UUID userId, ProfileRequest r) {
         Investor investor = investors.findByOwnerUserId(userId).orElse(null);
         if (investor == null) {
-            investor = new Investor(r.name(), r.type(), r.region()).ownedBy(userId);
-        } else {
-            investor.update(r.name(), r.type(), r.region());
+            investor = new Investor(r.companyName(), r.investorType(), r.region()).ownedBy(userId);
         }
+        investor.completeProfile(r);
         Investor saved = investors.saveAndFlush(investor); // a taken name or a racing second profile becomes 409
-        audit.record("INVESTOR_PROFILE_SAVED", "investor:" + saved.getId(), java.util.Map.of());
-        return InvestorResponse.from(saved);
+
+        // the profile form owns the mandate list: replace it as a whole
+        mandates.deleteAll(mandates.findAllByInvestorId(saved.getId()));
+        mandates.flush();
+        List<Mandate> fresh = mandates.saveAllAndFlush(r.mandates().stream()
+                .map(m -> new Mandate(saved, m.sector(), m.region(), m.minTicket(), m.maxTicket(), m.riskLevel(), m.instrumentNames()))
+                .toList());
+        audit.record("INVESTOR_PROFILE_SAVED", "investor:" + saved.getId(), java.util.Map.of("mandates", fresh.size()));
+        return InvestorResponse.from(saved, fresh);
     }
 
     InvestorResponse create(InvestorRequest r) {
-        return InvestorResponse.from(investors.saveAndFlush(new Investor(r.name(), r.type(), r.region())));
+        return InvestorResponse.from(investors.saveAndFlush(new Investor(r.name(), r.investorType(), r.region())));
     }
 
     @Transactional(readOnly = true)
@@ -61,7 +69,7 @@ class InvestorService {
 
     InvestorResponse update(UUID id, InvestorRequest r) {
         Investor investor = find(id);
-        investor.update(r.name(), r.type(), r.region());
+        investor.update(r.name(), r.investorType(), r.region());
         return InvestorResponse.from(investors.saveAndFlush(investor));
     }
 

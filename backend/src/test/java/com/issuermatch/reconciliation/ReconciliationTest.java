@@ -46,7 +46,7 @@ class ReconciliationTest {
 
     UUID investor() {
         if (investorId == null) {
-            investorId = db.queryForObject("INSERT INTO investors(name,type,region) VALUES (?,'VC','EUROPE') RETURNING id",
+            investorId = db.queryForObject("INSERT INTO investors(name,investor_type,region) VALUES (?,'VC','EUROPE') RETURNING id",
                     UUID.class, "Rec Inv " + UUID.randomUUID());
         }
         return investorId;

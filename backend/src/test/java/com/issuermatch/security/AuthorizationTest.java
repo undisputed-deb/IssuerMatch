@@ -45,7 +45,7 @@ class AuthorizationTest {
     }
 
     UUID investor() {
-        return db.queryForObject("INSERT INTO investors(name,type,region) VALUES (?,'VC','EUROPE') RETURNING id",
+        return db.queryForObject("INSERT INTO investors(name,investor_type,region) VALUES (?,'VC','EUROPE') RETURNING id",
                 UUID.class, "Authz Inv " + UUID.randomUUID());
     }
 
@@ -177,7 +177,7 @@ class AuthorizationTest {
     void analystsReadInvestorsButOnlyAdminsChangeThem() throws Exception {
         UUID inv = investor();
         call(get("/investors/" + inv), Auth.analyst(), null).andExpect(status().isOk());
-        String body = "{\"name\":\"X " + UUID.randomUUID() + "\",\"type\":\"VC\",\"region\":\"EUROPE\"}";
+        String body = "{\"name\":\"X " + UUID.randomUUID() + "\",\"investorType\":\"VC\",\"region\":\"EUROPE\"}";
         call(post("/investors"), Auth.analyst(), body).andExpect(status().isForbidden());
         call(put("/investors/" + inv), Auth.analyst(), body).andExpect(status().isForbidden());
         call(delete("/investors/" + inv), Auth.analyst(), null).andExpect(status().isForbidden());

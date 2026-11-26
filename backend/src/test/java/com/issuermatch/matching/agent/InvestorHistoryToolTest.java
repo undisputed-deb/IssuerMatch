@@ -19,7 +19,7 @@ class InvestorHistoryToolTest {
     @Autowired JdbcTemplate db;
 
     UUID investor() {
-        return db.queryForObject("INSERT INTO investors(name,type,region) VALUES (?,'PE','EUROPE') RETURNING id",
+        return db.queryForObject("INSERT INTO investors(name,investor_type,region) VALUES (?,'PE','EUROPE') RETURNING id",
                 UUID.class, "hist " + UUID.randomUUID());
     }
 

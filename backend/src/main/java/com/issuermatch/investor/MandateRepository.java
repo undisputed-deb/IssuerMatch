@@ -10,6 +10,8 @@ interface MandateRepository extends JpaRepository<Mandate, UUID> {
 
     Page<Mandate> findByInvestorId(UUID investorId, Pageable pageable);
 
+    java.util.List<Mandate> findAllByInvestorId(UUID investorId);
+
     /** Looking up by both ids stops /investors/A/mandates/{id of B's mandate}. */
     Optional<Mandate> findByIdAndInvestorId(UUID id, UUID investorId);
 }
