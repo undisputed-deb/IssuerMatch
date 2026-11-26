@@ -1,5 +1,6 @@
 package com.issuermatch.investor;
 
+import com.issuermatch.audit.AuditService;
 import com.issuermatch.common.NotFoundException;
 import com.issuermatch.investor.InvestorDtos.*;
 import java.util.UUID;
@@ -16,9 +17,32 @@ class InvestorService {
     private final InvestorRepository investors;
     private final MandateRepository mandates;
 
-    InvestorService(InvestorRepository investors, MandateRepository mandates) {
+    private final AuditService audit;
+
+    InvestorService(InvestorRepository investors, MandateRepository mandates, AuditService audit) {
         this.investors = investors;
         this.mandates = mandates;
+        this.audit = audit;
+    }
+
+    // ---- the signed-in investor's own profile ----
+
+    @Transactional(readOnly = true)
+    InvestorResponse mine(UUID userId) {
+        return InvestorResponse.from(investors.findByOwnerUserId(userId)
+                .orElseThrow(() -> new NotFoundException("You have no investor profile yet")));
+    }
+
+    InvestorResponse saveMine(UUID userId, InvestorRequest r) {
+        Investor investor = investors.findByOwnerUserId(userId).orElse(null);
+        if (investor == null) {
+            investor = new Investor(r.name(), r.type(), r.region()).ownedBy(userId);
+        } else {
+            investor.update(r.name(), r.type(), r.region());
+        }
+        Investor saved = investors.saveAndFlush(investor); // a taken name or a racing second profile becomes 409
+        audit.record("INVESTOR_PROFILE_SAVED", "investor:" + saved.getId(), java.util.Map.of());
+        return InvestorResponse.from(saved);
     }
 
     InvestorResponse create(InvestorRequest r) {

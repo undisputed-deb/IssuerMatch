@@ -70,6 +70,8 @@ class SecurityConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
                         .requestMatchers("/health", "/actuator/health", "/actuator/health/**").permitAll()
+                        // public signup: the only unauthenticated write. Validated to ISSUER/INVESTOR and rate limited.
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/auth/signup").permitAll()
                         .requestMatchers("/actuator/**").hasRole(Role.ADMIN.name())
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(o -> o

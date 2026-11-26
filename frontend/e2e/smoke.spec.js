@@ -12,10 +12,10 @@ test('sign in, submit a need, review the ranked result and approve it', async ({
   await page.screenshot({ path: `${shots}/1-login.png` });
   await page.getByLabel('Email').fill(process.env.ADMIN_EMAIL);
   await page.getByLabel('Password').fill('wrong-password');
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.locator('form').getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('alert')).toBeVisible(); // wrong password is reported
   await page.getByLabel('Password').fill(process.env.ADMIN_PASSWORD);
-  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.locator('form').getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
 
   // pick a mandate that exists in the seed data, so the agent has someone to find
@@ -66,6 +66,6 @@ test('sign in, submit a need, review the ranked result and approve it', async ({
   await page.getByRole('button', { name: 'Yes, approve' }).click();
   await expect(page.getByText('Approved').first()).toBeVisible();
   await page.getByRole('button', { name: 'Sign out' }).click();
-  await expect(page.getByRole('heading', { name: 'Sign in' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Sign in', exact: true }).first()).toBeVisible();
   expect(errors).toEqual([]);
 });

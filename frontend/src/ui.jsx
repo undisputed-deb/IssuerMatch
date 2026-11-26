@@ -63,6 +63,7 @@ const STATUS = {
   REJECTED: ['Rejected', 'bg-bad-bg text-bad', '✕'],
   FAILED: ['Failed', 'bg-bad-bg text-bad', '✕'],
   CLOSED: ['Closed', 'bg-rule/60 text-ink', '■'],
+  ACCEPTED: ['Accepted', 'bg-good-bg text-good', '✓'],
 };
 
 /** Status as shape plus word, so it never depends on colour alone. */
@@ -106,3 +107,29 @@ export function PageTitle({ title, children }) {
 export const money = (v) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(v);
 export const when = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 export const words = (v) => v.toLowerCase().replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase());
+
+export const control = 'mt-1 min-h-11 w-full rounded-sm border border-ink/30 bg-sheet px-3';
+
+export function Field({ label, children, wide }) {
+  return (
+    <label className={`block ${wide ? 'sm:col-span-2' : ''}`}>
+      <span className="text-sm font-medium">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+export function Select({ label, value, onChange, options }) {
+  return (
+    <Field label={label}>
+      <select className={control} value={value} onChange={onChange}>
+        {options.map((o) => <option key={o} value={o}>{words(o)}</option>)}
+      </select>
+    </Field>
+  );
+}
+
+export const SECTORS = ['TECHNOLOGY', 'FINTECH', 'HEALTHCARE', 'ENERGY', 'REAL_ESTATE', 'CONSUMER', 'INDUSTRIALS'];
+export const REGIONS = ['NORTH_AMERICA', 'EUROPE', 'ASIA_PACIFIC', 'LATAM', 'MEA'];
+export const INSTRUMENTS = ['EQUITY', 'DEBT', 'CONVERTIBLE', 'MEZZANINE'];
+export const RISKS = ['LOW', 'MEDIUM', 'HIGH'];

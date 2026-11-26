@@ -1,11 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api.js';
-import { Button, ErrorBox, Loading, PageTitle, useLoad, words } from '../ui.jsx';
+import { Button, ErrorBox, INSTRUMENTS, Loading, PageTitle, REGIONS, RISKS, SECTORS, useLoad, words } from '../ui.jsx';
 
-const SECTORS = ['TECHNOLOGY', 'FINTECH', 'HEALTHCARE', 'ENERGY', 'REAL_ESTATE', 'CONSUMER', 'INDUSTRIALS'];
-const REGIONS = ['NORTH_AMERICA', 'EUROPE', 'ASIA_PACIFIC', 'LATAM', 'MEA'];
-const INSTRUMENTS = ['EQUITY', 'DEBT', 'CONVERTIBLE', 'MEZZANINE'];
-const RISKS = ['LOW', 'MEDIUM', 'HIGH'];
 const EMPTY = { issuerId: '', title: '', description: '', sector: 'FINTECH', region: 'EUROPE', amount: '', instrument: 'EQUITY', riskLevel: 'MEDIUM' };
 const control = 'mt-1 min-h-11 w-full rounded-sm border border-ink/30 bg-sheet px-3';
 
@@ -38,7 +34,9 @@ export default function NewNeed() {
 
   if (issuers.loading) return <Loading label="Loading companies" />;
   if (issuers.error) return <ErrorBox error={issuers.error} onRetry={issuers.reload} />;
-  if (!issuers.data.items.length) return <p>You have no company yet, so there is nothing to raise money for.</p>;
+  if (!issuers.data.items.length) {
+    return <p>You have no company yet. <a className="font-medium text-brand underline" href="#/company">Add your company</a> first.</p>;
+  }
 
   return (
     <>

@@ -5,10 +5,13 @@ import com.issuermatch.common.ApiException;
 import com.issuermatch.common.NotFoundException;
 import com.issuermatch.issuer.Issuer;
 import com.issuermatch.issuer.IssuerRepository;
+import com.issuermatch.matching.MatchVisibility;
 import com.issuermatch.messaging.OutboxService;
 import com.issuermatch.messaging.Topics;
 import com.issuermatch.security.CurrentUser;
 import com.issuermatch.security.Role;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -17,7 +20,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** Staff see every need. An issuer only the needs of companies it owns; anything else is a plain 404. */
+/**
+ * Staff see every need. An issuer sees the needs of companies it owns. An investor sees only needs a human approved
+ * it for (MatchVisibility). Anything else is a plain 404.
+ */
 @Service
 @Transactional
 class FundingNeedService {
@@ -27,7 +33,11 @@ class FundingNeedService {
     private final OutboxService outbox;
     private final AuditService audit;
 
-    FundingNeedService(FundingNeedRepository needs, IssuerRepository issuers, OutboxService outbox, AuditService audit) {
+    private final MatchVisibility visibility;
+
+    FundingNeedService(FundingNeedRepository needs, IssuerRepository issuers, OutboxService outbox, AuditService audit,
+                       MatchVisibility visibility) {
+        this.visibility = visibility;
         this.needs = needs;
         this.issuers = issuers;
         this.outbox = outbox;
@@ -74,11 +84,14 @@ class FundingNeedService {
     FundingNeed get(UUID id) {
         CurrentUser me = CurrentUser.get();
         FundingNeed need = needs.findById(id).orElseThrow(() -> new NotFoundException("Funding need not found"));
-        if (!me.isStaff()) {
-            boolean owns = issuers.findById(need.getIssuerId()).map(i -> i.getOwnerUserId().equals(me.id())).orElse(false);
-            if (!owns) {
-                throw new NotFoundException("Funding need not found");
-            }
+        if (me.isStaff()) {
+            return need;
+        }
+        boolean owns = me.has(Role.ISSUER)
+                && issuers.findById(need.getIssuerId()).map(i -> i.getOwnerUserId().equals(me.id())).orElse(false);
+        boolean matched = me.has(Role.INVESTOR) && visibility.isMatched(me.id(), id);
+        if (!owns && !matched) {
+            throw new NotFoundException("Funding need not found");
         }
         return need;
     }
@@ -89,6 +102,12 @@ class FundingNeedService {
         if (me.isStaff()) {
             return issuerId == null ? needs.findAll(pageable) : needs.findByIssuerId(issuerId, pageable);
         }
-        return issuerId == null ? needs.findOwnedBy(me.id(), pageable) : needs.findOwnedBy(me.id(), issuerId, pageable);
+        List<UUID> matched = new ArrayList<>(me.has(Role.INVESTOR) ? visibility.needsMatchedTo(me.id()) : List.of());
+        if (matched.isEmpty()) {
+            matched.add(UUID.randomUUID()); // an empty IN list is not valid SQL; this matches nothing
+        }
+        boolean asIssuer = me.has(Role.ISSUER);
+        return issuerId == null ? needs.findVisible(me.id(), asIssuer, matched, pageable)
+                : needs.findVisibleOfIssuer(me.id(), asIssuer, matched, issuerId, pageable);
     }
 }

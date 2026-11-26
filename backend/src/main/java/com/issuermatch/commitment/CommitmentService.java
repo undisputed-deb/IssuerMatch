@@ -170,6 +170,23 @@ class CommitmentService {
     }
 
     @Transactional(readOnly = true)
+    org.springframework.data.domain.Page<CommitmentDtos.Summary> list(CommitmentDtos.Status status,
+                                                                      org.springframework.data.domain.Pageable pageable) {
+        String where = status == null ? "" : " WHERE c.status = ?";
+        Object[] args = status == null ? new Object[0] : new Object[] {status.name()};
+        Long total = db.queryForObject("SELECT count(*) FROM commitments c" + where, Long.class, args);
+        List<CommitmentDtos.Summary> rows = db.query("SELECT c.id, c.need_id, n.title, c.investor_id, i.name, c.amount, c.status,"
+                        + " c.created_by, c.created_at FROM commitments c JOIN funding_needs n ON n.id = c.need_id"
+                        + " JOIN investors i ON i.id = c.investor_id" + where
+                        + " ORDER BY c.created_at DESC LIMIT " + pageable.getPageSize() + " OFFSET " + pageable.getOffset(),
+                (rs, n) -> new CommitmentDtos.Summary(rs.getObject("id", UUID.class), rs.getObject("need_id", UUID.class),
+                        rs.getString("title"), rs.getObject("investor_id", UUID.class), rs.getString("name"),
+                        rs.getBigDecimal("amount"), rs.getString("status"), rs.getObject("created_by", UUID.class),
+                        rs.getTimestamp("created_at").toInstant()), args);
+        return new org.springframework.data.domain.PageImpl<>(rows, pageable, total == null ? 0 : total);
+    }
+
+    @Transactional(readOnly = true)
     Response get(UUID id) {
         List<Response> rows = db.query("SELECT c.id, c.need_id, c.investor_id, c.amount, c.status, c.created_at,"
                         + " n.remaining_capacity FROM commitments c JOIN funding_needs n ON n.id = c.need_id WHERE c.id = ?",

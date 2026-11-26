@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/funding-needs")
-@PreAuthorize("hasAnyRole('ISSUER','ANALYST','ADMIN')")
+@PreAuthorize("hasAnyRole('ISSUER','INVESTOR','ANALYST','ADMIN')") // reads; the service scopes what each sees
 class FundingNeedController {
 
     private final FundingNeedService service;
@@ -39,6 +39,7 @@ class FundingNeedController {
     }
 
     /** Run matching again after a failed or rejected run. 202: it happens asynchronously. */
+    @PreAuthorize("hasAnyRole('ISSUER','ANALYST','ADMIN')") // an investor can see a matched need but not re-run matching
     @PostMapping("/{id}/match")
     @ResponseStatus(HttpStatus.ACCEPTED)
     Response match(@PathVariable UUID id) {

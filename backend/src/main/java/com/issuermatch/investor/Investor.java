@@ -17,6 +17,7 @@ public class Investor {
     private String name;
     @Enumerated(EnumType.STRING) private InvestorType type;
     @Enumerated(EnumType.STRING) private Region region;
+    private UUID ownerUserId; // null for profiles entered by staff
     @CreationTimestamp private Instant createdAt;
 
     // N+1 fix: load mandates for up to 100 investors in ONE query (WHERE investor_id IN (...)).
@@ -39,7 +40,14 @@ public class Investor {
         this.region = region;
     }
 
+    /** Link the profile to the user who owns it. Set once, at creation. */
+    public Investor ownedBy(UUID userId) {
+        this.ownerUserId = userId;
+        return this;
+    }
+
     public UUID getId() { return id; }
+    public UUID getOwnerUserId() { return ownerUserId; }
     public String getName() { return name; }
     public InvestorType getType() { return type; }
     public Region getRegion() { return region; }

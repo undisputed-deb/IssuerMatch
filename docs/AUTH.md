@@ -1,9 +1,9 @@
 # Authentication and authorization
 
-Supabase Auth logs users in and issues JWTs. This API only verifies them. It never sees a password.
+Supabase Auth logs users in and issues JWTs. This API verifies them. It sees a password only during public signup, where it passes it to Supabase and never stores or logs it.
 
 ## How a request is checked
-1. `Authorization: Bearer <jwt>` is required on everything except `GET /health`.
+1. `Authorization: Bearer <jwt>` is required on everything except health checks and `POST /auth/signup`.
 2. The signature is checked against the keys at `SUPABASE_JWKS_URI`. Only ES256 and RS256 are accepted. HS256 and `alg: none` are refused.
 3. `iss` must equal `<SUPABASE_URL>/auth/v1`, `aud` must contain `authenticated`, and the token must not be expired.
 4. Roles come from `app_metadata.roles` only. `user_metadata` is ignored because users can edit it. The top-level `role` claim is ignored because it is the Postgres role.
@@ -12,28 +12,46 @@ Supabase Auth logs users in and issues JWTs. This API only verifies them. It nev
 The app refuses to start if `SUPABASE_JWKS_URI` or `SUPABASE_URL` is missing.
 
 ## Roles
-Give a user a role in the Supabase dashboard: Authentication, Users, the user, edit raw app metadata:
-```json
-{ "roles": ["ANALYST"] }
-```
-Valid values: `ISSUER`, `ANALYST`, `ADMIN`. A token carries the roles it had when it was issued, so a change shows up after the next token refresh.
+Four roles, always read from `app_metadata.roles`: `ISSUER`, `INVESTOR`, `ANALYST`, `ADMIN`.
 
-| | ISSUER | ANALYST | ADMIN |
-|---|---|---|---|
-| Issuers: list / read | own only | all | all |
-| Issuers: create / change / delete | own only | no | all (may name another owner) |
-| Funding needs: submit | own companies | no | any company |
-| Funding needs: list / read | own only | all | all |
-| Investors and mandates: read | no | yes | yes |
-| Investors and mandates: change | no | no | yes |
-| Match runs and results: read | no | yes | yes |
-| Approve / reject a run | no | yes | yes |
-| Record a commitment | no | yes | yes |
-| Review a flagged commitment | no | yes (not their own) | yes (not their own) |
-| Read / change risk rules (`/admin/risk-rules`) | no | no | yes |
+### Public signup (ISSUER and INVESTOR only)
+`POST /auth/signup` with `{"email","password","fullName","role"}` (no token).
+- `role` must be exactly `ISSUER` or `INVESTOR`. Anything else, including `ADMIN` and `ANALYST`, gets 400. Unknown fields get 400.
+- The server creates the user through Supabase's Auth Admin API with `app_metadata: {"roles": [role]}`, using
+  `SUPABASE_SERVICE_ROLE_KEY` (or an existing `SUPABASE_SECRET_KEY`). The key stays on the server. A second check in the
+  client class refuses to create staff roles.
+- The account is confirmed at once, so **nobody proves they own the email address**. For a real product, send a
+  confirmation email instead.
+- Rate limited to 5 per minute per address and 30 per minute overall. A taken email answers 409, which does reveal that
+  an account exists.
+- Email, name and password never reach the logs or the audit trail. Without a key the endpoint answers 503.
+
+### Staff
+An administrator grants `ANALYST` or `ADMIN` in Supabase (raw app metadata `{"roles":["ANALYST"]}`). A token carries the
+roles it had when it was issued, so a change shows up after the next sign-in.
+
+### Who may do what
+| | ISSUER | INVESTOR | ANALYST | ADMIN |
+|---|---|---|---|---|
+| Companies (issuers): list / read | own | no | all | all |
+| Companies: create / change / delete | own | no | no | all (may name another owner) |
+| Funding needs: submit | own companies | no | no | any company |
+| Funding needs: list / read | own | only those a human approved it for | all | all |
+| Funding needs: request matching again | own | no | yes | yes |
+| Own investor profile (`/investors/me`) | no | yes | no | no |
+| Investors and mandates (list, read) | no | no | yes | yes |
+| Investors and mandates: change | no | no | no | yes |
+| Match runs, results, approve / reject | no | no | yes | yes |
+| Commitments: list, read, record | no | no | yes | yes |
+| Review a flagged commitment | no | no | yes (not their own) | yes (not their own) |
+| Risk rules, dead letters, reconciliation, metrics | no | no | no | yes |
+
+An investor is "matched" to a need only when a match run for it is `APPROVED` and ranked the investor profile that user owns.
+Pending and rejected runs show nothing.
 
 An issuer asking for someone else's data gets `404`, the same answer as for an id that does not exist, so ids cannot be probed.
 A missing role gets `403`.
+Request bodies are validated before the role check, so a caller without the role who sends an invalid body sees `400`. Nothing is written either way.
 
 ## Who did it
 - `match_runs.requested_by`: the user who submitted the funding need.

@@ -34,11 +34,21 @@ final class RateLimitFilters {
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/funding-needs"),
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/funding-needs/{id}/match"));
 
+    private static final RequestMatcher SIGNUP =
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/auth/signup");
+
     static OncePerRequestFilter perIp(RateLimiter limiter, RateLimitProperties props) {
         return new Base(props) {
             @Override
             OptionalLong check(HttpServletRequest request) {
-                return limiter.tryAcquire("ip:" + request.getRemoteAddr(), props.ipPerMinute());
+                OptionalLong wait = limiter.tryAcquire("ip:" + request.getRemoteAddr(), props.ipPerMinute());
+                if (wait.isEmpty() && SIGNUP.matches(request)) { // no user yet, so account creation is limited by address
+                    wait = limiter.tryAcquire("signup:" + request.getRemoteAddr(), props.signupPerMinute());
+                    if (wait.isEmpty()) {
+                        wait = limiter.tryAcquire("signup-global", props.signupGlobalPerMinute());
+                    }
+                }
+                return wait;
             }
         };
     }

@@ -45,6 +45,22 @@ export async function signIn(email, password) {
   return currentUser();
 }
 
+/** Public signup, then sign in. Only ISSUER and INVESTOR can be chosen; the server enforces it. */
+export async function signUp({ fullName, email, password, role }) {
+  const res = await send(`${API}/auth/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fullName, email, password, role }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    const wait = res.headers.get('Retry-After');
+    const message = data?.error?.message || `Signup failed (${res.status})`;
+    throw new ApiError(res.status, data?.error?.code || 'ERROR', wait ? `${message}. Try again in ${wait}s.` : message);
+  }
+  return signIn(email, password);
+}
+
 export function signOut() {
   sessionStorage.removeItem(TOKEN_KEY);
   onSignedOut();
@@ -83,6 +99,16 @@ async function request(path, { method = 'GET', body, headers = {} } = {}) {
 
 export const api = {
   issuers: () => request('/issuers?size=100&sort=name,asc'),
+  createIssuer: (company) => request('/issuers', { method: 'POST', body: company }),
+  myProfile: () => request('/investors/me'),
+  saveProfile: (profile) => request('/investors/me', { method: 'PUT', body: profile }),
+  commitments: (status) => request(`/commitments?size=50&status=${status}`),
+  commitment: (id) => request(`/commitments/${id}`),
+  reviewCommitment: (id, approve) => request(`/commitments/${id}/${approve ? 'approve' : 'reject'}`, { method: 'POST' }),
+  deadLetters: () => request('/admin/dead-letters?size=50&status=PENDING'),
+  replayDeadLetter: (id) => request(`/admin/dead-letters/${id}/replay`, { method: 'POST' }),
+  reconciliationLatest: () => request('/admin/reconciliation/latest'),
+  reconciliationRun: () => request('/admin/reconciliation/run', { method: 'POST' }),
   needs: () => request('/funding-needs?size=100&sort=createdAt,desc'),
   need: (id) => request(`/funding-needs/${id}`),
   submitNeed: (need) => request('/funding-needs', { method: 'POST', body: need }),

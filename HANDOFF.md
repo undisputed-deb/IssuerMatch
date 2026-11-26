@@ -33,8 +33,9 @@ IssuerMatch: Spring Boot + Kafka + Spring AI agent that ranks investors for issu
 - nothing
 
 ## Next steps
-CURRENT TASK (user spec, 2026-11-26): evolve into a two-sided platform. Execute in order, after EACH phase run `./mvnw test` + `npm run build`, report, commit (author = user only).
-1. Phase 1: INVESTOR role, rate-limited public POST /auth/signup (ISSUER/INVESTOR only), SupabaseAuthAdminClient (real + fake), investors.owner_user_id migration, Sign In/Create Account UI, role routing, strict isolation (only ANALYST/ADMIN list all needs / see runs).
+CURRENT TASK (user spec, 2026-11-26) -- PHASE 1 DONE (302 backend tests, frontend build ok, real signup verified + test users deleted):
+ INVESTOR role; POST /auth/signup (signup/ pkg, SupabaseAuthAdminClient real=RestSupabaseAuthAdminClient, test fake=support/FakeSupabaseAuthClient; key = SUPABASE_SERVICE_ROLE_KEY else SUPABASE_SECRET_KEY; email auto-confirmed = no ownership proof, documented); signup rate limit 5/min/IP + 30 global; V19 investors.owner_user_id UNIQUE; GET/PUT /investors/me (name,type,region only until Phase 2); MatchVisibility = single definition of investor visibility (APPROVED run + owned profile); GET /commitments?status= for staff; frontend: Login with Create account, App.jsx areaOf() staff/issuer/investor, pages Company, Profile, RiskReview, DeadLetters, Reconciliation; e2e/signup.spec.js (SIGNUP_E2E=1, creates+deletes real users).
+ Remaining phases: evolve into a two-sided platform. Execute in order, after EACH phase run `./mvnw test` + `npm run build`, report, commit (author = user only).
 2. Phase 2: institutional investor profile (GET/PUT /investors/me), dynamic funding needs with sealed instrument terms (Jackson 3), new UI forms.
 3. Phase 3: pgvector (pgvector/pgvector:pg17), thesis embeddings, structured ScoreBreakdown + FX, up to 10 matches, deal briefs + diligence questions, Resilience4j + token budget + DEGRADED_DETERMINISTIC, GET /investor/matches.
 4. Phase 4: investor offers via POST /commitments (keep all safeguards), pass endpoint, deal Q&A (deal_questions), role dashboards.

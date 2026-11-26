@@ -20,7 +20,8 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 @IntegrationTest
 @TestPropertySource(properties = {"app.rate-limit.enabled=true", "app.rate-limit.ip-per-minute=20",
-        "app.rate-limit.user-per-minute=5", "app.rate-limit.llm-per-minute=2", "app.rate-limit.llm-global-per-minute=3"})
+        "app.rate-limit.user-per-minute=5", "app.rate-limit.llm-per-minute=2", "app.rate-limit.llm-global-per-minute=3",
+        "app.rate-limit.signup-per-minute=2", "app.rate-limit.signup-global-per-minute=3"})
 class RateLimitTest {
 
     @Autowired MockMvc mvc;
@@ -97,5 +98,19 @@ class RateLimitTest {
     void theBucketMapIsBoundedSoMadeUpKeysCannotExhaustMemory() {
         for (int i = 0; i < RateLimiter.MAX_KEYS + 500; i++) limiter.tryAcquire("flood:" + i, 5);
         assertThat(limiter.size()).isEqualTo(RateLimiter.MAX_KEYS);
+    }
+
+    @Test
+    void publicSignupIsLimitedPerAddressAndOverall() throws Exception {
+        // an invalid body: the limit applies before any account work
+        assertThat(code(signup("10.6.0.1"))).isEqualTo(400);
+        assertThat(code(signup("10.6.0.1"))).isEqualTo(400);
+        assertThat(code(signup("10.6.0.1"))).isEqualTo(429);   // over this address's 2
+        assertThat(code(signup("10.6.0.2"))).isEqualTo(400);   // third signup overall
+        assertThat(code(signup("10.6.0.3"))).isEqualTo(429);   // over the shared ceiling of 3
+    }
+
+    MockHttpServletRequestBuilder signup(String ip) {
+        return post("/auth/signup").with(Auth.anonymous()).with(from(ip)).contentType(MediaType.APPLICATION_JSON).content("{}");
     }
 }

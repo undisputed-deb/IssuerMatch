@@ -36,6 +36,10 @@ public final class Auth {
         return as(userId, "ISSUER");
     }
 
+    public static RequestPostProcessor investor(UUID userId) {
+        return as(userId, "INVESTOR");
+    }
+
     public static RequestPostProcessor noRoles() {
         return as(UUID.randomUUID());
     }

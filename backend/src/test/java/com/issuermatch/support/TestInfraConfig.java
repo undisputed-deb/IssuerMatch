@@ -36,6 +36,13 @@ public class TestInfraConfig {
         return FakeLlmClient.lenient();
     }
 
+    /** Replaces the Supabase Auth Admin API: no test ever creates a real user. */
+    @Bean
+    @Primary
+    FakeSupabaseAuthClient fakeSupabaseAuthClient() {
+        return new FakeSupabaseAuthClient();
+    }
+
     @Bean
     @ServiceConnection
     KafkaContainer kafka() {

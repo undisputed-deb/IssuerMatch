@@ -32,4 +32,12 @@ final class CommitmentDtos {
      */
     record Response(UUID id, UUID needId, UUID investorId, BigDecimal amount, String status,
                     BigDecimal remainingCapacity, List<DecisionView> decisions, Instant createdAt) {}
+
+    enum Status {
+        ACCEPTED, PENDING_REVIEW, REJECTED
+    }
+
+    /** One row of the staff risk-review queue. */
+    record Summary(UUID id, UUID needId, String needTitle, UUID investorId, String investorName, BigDecimal amount,
+                   String status, UUID createdBy, Instant createdAt) {}
 }

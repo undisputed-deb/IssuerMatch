@@ -43,6 +43,14 @@ class CommitmentController {
         return response.body(saved.body());
     }
 
+    /** The risk-review queue: ?status=PENDING_REVIEW. */
+    @GetMapping
+    com.issuermatch.common.PageResponse<CommitmentDtos.Summary> list(
+            @org.springframework.web.bind.annotation.RequestParam(required = false) CommitmentDtos.Status status,
+            org.springframework.data.domain.Pageable pageable) {
+        return com.issuermatch.common.PageResponse.of(service.list(status, pageable), x -> x);
+    }
+
     /** One commitment with the reason every rule gave. */
     @GetMapping("/{id}")
     Response get(@PathVariable UUID id) {
