@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api.js';
-import { Thread, terms as offerTerms } from '../deal.jsx';
+import { ThreadView, terms as offerTerms } from '../deal.jsx';
 import OfferDrawer from '../OfferDrawer.jsx';
 import { Breakdown } from '../score.jsx';
 import { Button, ErrorBox, Field, Loading, PageTitle, Status, control, money, useLoad, when, words } from '../ui.jsx';
@@ -17,25 +17,27 @@ const show = (v) => (typeof v === 'boolean' ? (v ? 'Yes' : 'No') : typeof v === 
 export default function InvestorDeals() {
   const deals = useLoad(api.investorMatches, [], () => 15000);
   const offers = useLoad(api.investorOffers, [], () => 15000);
-  const reload = () => Promise.all([deals.reload(), offers.reload()]);
+  const questions = useLoad(api.investorQuestions, [], () => 15000); // one request for every deal's thread
+  const reload = () => Promise.all([deals.reload(), offers.reload(), questions.reload()]);
 
   return (
     <>
       <PageTitle title="Matched deals">{deals.data && `${deals.data.length} approved for your firm`}</PageTitle>
-      <ErrorBox error={deals.error || offers.error} onRetry={reload} />
+      <ErrorBox error={deals.error || offers.error || questions.error} onRetry={reload} />
       {deals.loading && <Loading />}
       {deals.data?.length === 0 && <p>No deals yet. A deal appears here after our review team approves a match with your firm.</p>}
       <ul className="space-y-8">
         {deals.data?.map((d) => (
           <Deal key={d.matchResultId} deal={d} onChange={reload}
-            offers={offers.data?.filter((o) => o.needId === d.needId) ?? []} />
+            offers={offers.data?.filter((o) => o.needId === d.needId) ?? []}
+            thread={{ data: questions.data?.filter((q) => q.needId === d.needId), loading: questions.loading, reload: questions.reload }} />
         ))}
       </ul>
     </>
   );
 }
 
-function Deal({ deal, offers, onChange }) {
+function Deal({ deal, offers, thread, onChange }) {
   const [drawer, setDrawer] = useState(false);
   const terms = Object.entries(deal.instrumentTerms ?? {}).filter(([k, v]) => k !== 'type' && v != null);
   return (
@@ -59,7 +61,7 @@ function Deal({ deal, offers, onChange }) {
             <h3 className="font-semibold">Why it fits your thesis</h3>
             <p className="max-w-prose">{deal.dealBrief}</p>
           </section>
-          <Thread needId={deal.needId} mode="investor" suggestions={deal.suggestedDiligenceQuestions} />
+          <ThreadView needId={deal.needId} mode="investor" thread={thread} suggestions={deal.suggestedDiligenceQuestions} />
           <details>
             <summary className="flex min-h-11 items-center font-medium text-brand">The issuer’s description and terms</summary>
             <p className="max-w-prose whitespace-pre-wrap break-words">{deal.description}</p>

@@ -21,10 +21,17 @@ public final class ModelOutput {
 
     static final int MAX_RANKINGS = 10;
     static final int MAX_EXPLANATION = 1500;
-    static final int MAX_BRIEF = 800;
-    static final int MIN_QUESTIONS = 3;
-    static final int MAX_QUESTIONS = 5;
-    static final int MAX_QUESTION = 300;
+    static final int MAX_BRIEF = 400;
+    static final int MAX_BRIEF_SENTENCES = 2;
+    static final int QUESTIONS = 3;
+    static final int MAX_QUESTION = 200;
+    /** The prompt asks for 20. The slack stops a 22-word question from costing a whole second model call. */
+    static final int MAX_QUESTION_WORDS = 30;
+    /** A sentence ends at . ! or ? followed by space and a capital or digit, so "2.5" and "e.g. this" do not count. */
+    private static final Pattern SENTENCE_BREAK = Pattern.compile("(?<=[.!?])\\s+(?=[\\p{Lu}\\d\"“])");
+    /** Questions go to the founder. These phrases only make sense aimed back at the investor who is asking. */
+    private static final Pattern AIMED_AT_INVESTOR = Pattern.compile(
+            "\\byour (\\w+ )?(mandate|thesis|investment (thesis|criteria|strategy|committee|horizon|philosophy))\\b", Pattern.CASE_INSENSITIVE);
     /** Markup, links and script URLs have no place in model text: they are how model output attacks a browser. */
     private static final Pattern ACTIVE_CONTENT = Pattern.compile(
             "<[a-zA-Z/!?]|https?://|\\]\\(|javascript:|data:text|vbscript:|www\\.[a-z0-9-]+\\.[a-z]", Pattern.CASE_INSENSITIVE);
@@ -92,11 +99,14 @@ public final class ModelOutput {
             }
             text(e.explanation(), "explanation", MAX_EXPLANATION);
             text(e.dealBrief(), "dealBrief", MAX_BRIEF);
-            List<String> questions = e.suggestedDiligenceQuestions();
-            if (questions == null || questions.size() < MIN_QUESTIONS || questions.size() > MAX_QUESTIONS) {
-                throw new Invalid("suggestedDiligenceQuestions must hold " + MIN_QUESTIONS + " to " + MAX_QUESTIONS + " questions");
+            if (SENTENCE_BREAK.split(e.dealBrief().strip()).length > MAX_BRIEF_SENTENCES) {
+                throw new Invalid("dealBrief must be " + MAX_BRIEF_SENTENCES + " sentences");
             }
-            questions.forEach(q -> text(q, "each diligence question", MAX_QUESTION));
+            List<String> questions = e.suggestedDiligenceQuestions();
+            if (questions == null || questions.size() != QUESTIONS) {
+                throw new Invalid("suggestedDiligenceQuestions must hold exactly " + QUESTIONS + " questions");
+            }
+            questions.forEach(ModelOutput::question);
             noOtherInvestors(e, candidates);
             if (e.citedTools() == null || e.citedTools().isEmpty()) {
                 throw new Invalid("citedTools must list the tools you used for investor " + e.investorId());
@@ -115,6 +125,16 @@ public final class ModelOutput {
         }
         if (ACTIVE_CONTENT.matcher(value).find()) {
             throw new Invalid(field + " must be plain text: no markup, links or scripts");
+        }
+    }
+
+    private static void question(String q) {
+        text(q, "each diligence question", MAX_QUESTION);
+        if (q.strip().split("\\s+").length > MAX_QUESTION_WORDS) {
+            throw new Invalid("each diligence question must be at most 20 words");
+        }
+        if (AIMED_AT_INVESTOR.matcher(q).find()) {
+            throw new Invalid("diligence questions are asked by the investor to the issuer's founder, not to the investor");
         }
     }
 

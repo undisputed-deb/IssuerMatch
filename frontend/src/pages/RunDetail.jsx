@@ -63,7 +63,7 @@ export default function RunDetail({ id }) {
           {results.length === 0 && <p className="text-soft">{run.status === 'RUNNING' || run.status === 'REQUESTED' ? 'The agent is working…' : 'No results.'}</p>}
           <ol className="space-y-3">
             {results.map((r) => (
-              <li key={r.investorId} className="grid grid-cols-[3.5rem_1fr] border border-rule bg-sheet">
+              <li key={r.investorId} className="grid grid-cols-[3.5rem_minmax(0,1fr)] border border-rule bg-sheet">
                 <div className="flex items-start justify-center border-r border-rule py-4 font-mono text-2xl">{r.rank}</div>
                 <div className="p-4">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -88,7 +88,7 @@ export default function RunDetail({ id }) {
                     <p className="max-w-prose whitespace-pre-wrap">{r.explanation}</p>
                     <p className="mt-2 flex flex-wrap gap-1.5 text-sm">
                       <span className="text-soft">Evidence:</span>
-                      {r.citedTools.map((t) => <code key={t} className="rounded-sm bg-paper px-1.5 font-mono">{t}</code>)}
+                      {r.citedTools.map((t) => <code key={t} className="break-all rounded-sm bg-paper px-1.5 font-mono">{t}</code>)}
                     </p>
                   </details>
                 </div>

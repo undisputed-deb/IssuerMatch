@@ -38,10 +38,14 @@ IssuerMatch: Spring Boot + Kafka + Spring AI agent that ranks investors for issu
  PHASE 5 DONE (350 tests, 94.3% lines / 85.4% branches, 48 endpoints, build ok, browser smoke + deal flow ok, chaos.sh ok, dependency scan 0 findings): platform/TwoSidedPlatformFlowTest (whole flow via API + outsiders attack it; mutation-checked), chaos.sh step 1 now expects DEGRADED_DETERMINISTIC fallback, README/AUTH/SECURITY/SECURITY_AUDIT/RISK/INTERVIEW_NOTES updated.
 
 ## In progress
-- nothing
+- New 3-phase upgrade spec (2026-11-26). Rules: after EACH phase run tests + build, commit (author = user only), push, STOP and report. Phase 1 done; wait for the user before Phase 2.
+- UPGRADE PHASE 1 DONE (356 tests, 94.4% lines / 85.5% branches, 49 endpoints, build ok): prompt asks investor->founder questions, exactly 3 (validator: <=30 words, rejects "your thesis/mandate"), dealBrief 2 sentences <=400 chars; GET /investor/questions replaces per-deal polling (Thread fetches, ThreadView renders); scripts/e2e-cleanup.{sh,sql} + e2e-delete-users.mjs run from Playwright global teardown and e2e.sh EXIT trap; `scripts/e2e.sh accounts` runs signup+deal; fixed 3px mobile overflow on RunDetail (long tool name). E2E rows deleted from the local app DB; Supabase had none.
 
 ## Next steps
-1. No task pending. Optional follow-ups: email confirmation on signup; repeat load test + security audit for the new features; merge or close Dependabot PRs; deploy to a host.
+1. Phase 2 (when the user says go): issuer profile fields + verified flags (ADMIN PATCH), investor participation_role/deployment_status + mandate target_stages in FitScorer (PAUSED excluded), investor summary card on offers, issuer accept/decline of ACCEPTED commitments (lock need, release capacity, outbox event, reconciliation). Full spec is in the chat; ask the user to paste it again if lost.
+2. Phase 3: investor_members + investor_invites (copy-link, SHA-256 token, 7 days), org roles MANAGING_DIRECTOR/ANALYST/VIEWER enforced server-side, Team tab, /invite/:token route, tests + docs.
+3. When Phase 2 changes who holds capacity, update scripts/e2e-cleanup.sql (it returns capacity for ACCEPTED/PENDING_REVIEW commitments; issuer-DECLINED must not count).
+4. Open question for the user: 4 old "Browser test%" needs remain in the local app DB (not E2E%, so not deleted).
 
 ## Standing rules
 - Rules: Jackson 3 only; RLS on every new table; Testcontainers Kafka 3.8.0; no live Gemini/Supabase Auth in tests; no credential-shaped literals; Maven deps in LAST </dependencies>.

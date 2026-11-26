@@ -117,6 +117,7 @@ export const api = {
   runs: (page = 0) => request(`/match-runs?size=20&page=${page}`),
   investorMatches: () => request('/investor/matches'),
   investorOffers: () => request('/investor/offers'),
+  investorQuestions: () => request('/investor/questions'),
   submitOffer: (offer, key) =>
     request('/commitments', { method: 'POST', body: offer, headers: { 'Idempotency-Key': key }, decision: (d) => d?.status === 'REJECTED' }),
   pass: (matchResultId, reason) => request(`/investor/matches/${matchResultId}/pass`, { method: 'POST', body: { reason } }),

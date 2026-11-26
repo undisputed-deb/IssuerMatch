@@ -1,23 +1,10 @@
 import { expect, test } from '@playwright/test';
 
-// The whole two-sided flow in real browsers, with a real model call. Creates REAL users and deletes them. Runs only when asked:
+// The whole two-sided flow in real browsers, with a real model call. Creates REAL users; global-teardown.js deletes them. Runs only when asked:
 //   SIGNUP_E2E=1 SUPABASE_URL=... SUPABASE_ADMIN_KEY=... ADMIN_EMAIL=... ADMIN_PASSWORD=... npx playwright test deal
-const url = process.env.SUPABASE_URL;
-const key = process.env.SUPABASE_ADMIN_KEY;
 const shots = process.env.SHOTS_DIR || 'test-results/shots';
 
 test.skip(!process.env.SIGNUP_E2E, 'creates real accounts: set SIGNUP_E2E=1 to run');
-
-const created = new Set();
-
-test.afterAll(async ({ request }) => {
-  const headers = { apikey: key, Authorization: `Bearer ${key}` };
-  const list = await (await request.get(`${url}/auth/v1/admin/users?per_page=200`, { headers })).json();
-  for (const user of list.users.filter((u) => created.has(u.email))) {
-    const res = await request.delete(`${url}/auth/v1/admin/users/${user.id}`, { headers });
-    console.log(`cleanup: deleted test user (${res.status()})`);
-  }
-});
 
 const errors = [];
 
@@ -36,7 +23,6 @@ async function createAccount(page, role, label) {
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);
   await page.getByRole('radio', { name: new RegExp(role) }).check();
-  created.add(email);
   await page.getByRole('button', { name: 'Create my account' }).click();
 }
 
@@ -103,6 +89,9 @@ test('profile, need, approval, question, answer, offer and pass', async ({ brows
   await investor.reload();
   const deal = investor.getByRole('listitem').filter({ has: investor.getByRole('heading', { name: title }) });
   await expect(deal).toBeVisible({ timeout: 30_000 });
+  const suggested = await deal.getByRole('region', { name: 'Suggested diligence questions' }).getByRole('listitem').locator('span').allTextContents();
+  expect(suggested).toHaveLength(3);
+  console.log(`suggested questions: ${JSON.stringify(suggested)}`);
   await deal.getByRole('button', { name: 'Ask issuer' }).first().click();
   await expect(deal.getByRole('button', { name: 'Asked' })).toHaveCount(1);
   await deal.getByLabel('Ask your own question').fill('<b>How long is your runway?</b>');

@@ -35,6 +35,12 @@ class DealController {
         return service.myOffers(CurrentUser.get().id());
     }
 
+    @GetMapping("/investor/questions")
+    @PreAuthorize("hasRole('INVESTOR')")
+    List<DealDtos.Question> myQuestions() {
+        return service.myQuestions(CurrentUser.get().id());
+    }
+
     @PostMapping("/investor/matches/{matchResultId}/pass")
     @PreAuthorize("hasRole('INVESTOR')")
     @ResponseStatus(HttpStatus.NO_CONTENT)

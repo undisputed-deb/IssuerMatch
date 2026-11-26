@@ -49,6 +49,12 @@ The server creates the Supabase user and sets the role itself, and accepts two r
 The admin key stays on the server, and a second check in the client class refuses staff roles.
 Accounts are confirmed without an email check, which I would change for real users.
 
+**Checking who a question is for** (`MatchAgent.SYSTEM_PROMPT`, `ModelOutput`).
+Live runs showed the model writing questions to the investor, such as how flexible its thesis was.
+I rewrote the prompt with the direction, a good and a bad example and a cap of three short questions, and the validator
+rejects questions about "your thesis" or "your mandate". The pattern catches the symptom I saw, and a differently worded
+inverted question would get past it.
+
 **Prompt injection** (`PromptInjectionDetector`, `MatchAgent.userPrompt`).
 I treat the funding text as data: fenced, angle brackets escaped, and never able to choose tools or permissions.
 A pattern detector flags suspicious text for the reviewer, and I know patterns can be evaded.
@@ -121,7 +127,7 @@ The backlog fell from 105,334 to 439, while request latency rose a little.
 18. **What happens if an investor passes and offers at the same moment?** Both lock the investor row, so one runs first. A live offer blocks a pass; an offer after a pass replaces the decision.
 
 ## Resume bullets (measured numbers only)
-- Built a two-sided capital-matching platform (Java 21, Spring Boot, Kafka, Spring AI, pgvector, React) with 4 roles, 48 REST endpoints and 350 integration and unit tests at 94.3% line coverage.
+- Built a two-sided capital-matching platform (Java 21, Spring Boot, Kafka, Spring AI, pgvector, React) with 4 roles, 49 REST endpoints and 356 integration and unit tests at 94.4% line coverage.
 - Designed a retry-safe commitment API with idempotency keys, row locking and a runtime-tunable risk engine, sustaining about 620 requests/s at p95 133 ms with zero errors in a single-laptop load test.
 - Found and fixed an event-publishing bottleneck through load testing, cutting the post-load backlog from 105,334 events to 439.
 - Combined semantic thesis search with deterministic scoring and a fallback matcher, so a model outage still yields a reviewable ranking.

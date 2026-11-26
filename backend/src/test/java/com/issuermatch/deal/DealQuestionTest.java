@@ -75,6 +75,33 @@ class DealQuestionTest {
     }
 
     @Test
+    void theBatchCallReturnsEveryThreadOfTheCallersFirmAndNoOtherFirms() throws Exception {
+        deal = new Deals(db, "EQUITY");
+        Deals second = new Deals(db, "EQUITY");
+        try {
+            Deals.Party ivy = deal.investor("APPROVED");
+            Deals.Party rival = deal.investor("APPROVED");
+            second.match(ivy.investorId(), "APPROVED");
+            ask(Auth.investor(ivy.user()), "ivy one").andExpect(status().isCreated());
+            ask(Auth.investor(rival.user()), "rival secret").andExpect(status().isCreated());
+            mvc.perform(post("/funding-needs/" + second.needId + "/questions").with(Auth.investor(ivy.user()))
+                    .contentType(MediaType.APPLICATION_JSON).content("{\"question\":\"ivy two\"}")).andExpect(status().isCreated());
+
+            mvc.perform(get("/investor/questions").with(Auth.investor(ivy.user()))).andExpect(status().isOk())
+                    .andExpect(jsonPath("$[*].question", org.hamcrest.Matchers.contains("ivy one", "ivy two")))
+                    .andExpect(jsonPath("$[1].needId").value(second.needId.toString()));
+            mvc.perform(get("/investor/questions").with(Auth.investor(rival.user())))
+                    .andExpect(jsonPath("$[*].question", org.hamcrest.Matchers.contains("rival secret")));
+            mvc.perform(get("/investor/questions").with(Auth.investor(UUID.randomUUID()))).andExpect(jsonPath("$", hasSize(0)));
+            for (RequestPostProcessor other : new RequestPostProcessor[] {Auth.issuer(deal.issuerUser), Auth.analyst()}) {
+                mvc.perform(get("/investor/questions").with(other)).andExpect(status().isForbidden());
+            }
+        } finally {
+            second.cleanUp(); // before the first: its match points at an investor the first one deletes
+        }
+    }
+
+    @Test
     void investorsNeverSeeEachOthersThreads() throws Exception {
         deal = new Deals(db, "EQUITY");
         Deals.Party ivy = deal.investor("APPROVED");

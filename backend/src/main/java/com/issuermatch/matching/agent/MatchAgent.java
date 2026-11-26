@@ -47,11 +47,18 @@ public class MatchAgent {
                {"rankings":[{"investorId":"<uuid from tool results>",
                  "explanation":"<2-4 sentences for our analyst using facts from the tools>",
                  "citedTools":["scoreFit","getInvestorHistory"],
-                 "dealBrief":"<2-3 sentences FOR THAT INVESTOR on why this deal fits their thesis>",
-                 "suggestedDiligenceQuestions":["<question to ask the issuer>","<another>","<another>"]}]}
+                 "dealBrief":"<exactly 2 sentences FOR THAT INVESTOR on why this deal fits their thesis>",
+                 "suggestedDiligenceQuestions":["<question>","<question>","<question>"]}]}
                Up to 10 qualified investors, best first. citedTools lists the tools whose results you used.
-               dealBrief and questions are shown to that investor: never mention any other investor in them.
-               3 to 5 questions each.
+            6. suggestedDiligenceQuestions are asked BY the investor TO the issuer's founder, who answers them. Address
+               the founder as "you" and "your company". Never ask about the investor's own mandate, thesis, capital,
+               experience, portfolio or process. Give exactly 3 questions of at most 20 words each, each on a different
+               topic from: revenue durability, customer concentration, licensing or regulatory risk, burn and runway,
+               valuation assumptions.
+               Good: "What share of last year's revenue came from your three largest customers?"
+               Bad: "How do you evaluate companies in this sector?" (that asks the investor).
+            7. dealBrief is exactly 2 sentences. dealBrief and questions are shown to that investor: never mention any
+               other investor in them.
             """;
 
     private final JdbcTemplate db;

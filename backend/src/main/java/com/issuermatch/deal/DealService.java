@@ -118,6 +118,13 @@ class DealService {
         return db.query(sql, (rs, k) -> question(rs), args);
     }
 
+    /** Every thread of the caller's own firm, so the deal feed makes one call instead of one per deal. */
+    @Transactional(readOnly = true)
+    List<DealDtos.Question> myQuestions(UUID userId) {
+        // ponytail: no paging, bounded by 50 questions per matched need; add paging if a firm matches hundreds of deals
+        return db.query(QUESTION + " WHERE i.owner_user_id = ? ORDER BY q.created_at, q.id", (rs, k) -> question(rs), userId);
+    }
+
     DealDtos.Question ask(UUID needId, UUID userId, String text) {
         UUID investorId = matchedProfile(needId, userId);
         if (investorId == null) {

@@ -1,23 +1,10 @@
 import { expect, test } from '@playwright/test';
 
-// Creates REAL users through the public signup, then deletes them. Runs only when asked:
+// Creates REAL users through the public signup; global-teardown.js deletes them. Runs only when asked:
 //   SIGNUP_E2E=1 SUPABASE_URL=... SUPABASE_ADMIN_KEY=... npx playwright test signup
-const url = process.env.SUPABASE_URL;
-const key = process.env.SUPABASE_ADMIN_KEY;
 const shots = process.env.SHOTS_DIR || 'test-results/shots';
 
 test.skip(!process.env.SIGNUP_E2E, 'creates real accounts: set SIGNUP_E2E=1 to run');
-
-const created = new Set(); // emails registered by this run
-
-test.afterAll(async ({ request }) => {
-  const headers = { apikey: key, Authorization: `Bearer ${key}` };
-  const list = await (await request.get(`${url}/auth/v1/admin/users?per_page=200`, { headers })).json();
-  for (const user of list.users.filter((u) => created.has(u.email))) {
-    const res = await request.delete(`${url}/auth/v1/admin/users/${user.id}`, { headers });
-    console.log(`cleanup: deleted test user (${res.status()})`);
-  }
-});
 
 async function createAccount(page, role, label) {
   const email = `e2e-${label}-${Date.now()}@issuermatch.test`;
@@ -29,7 +16,6 @@ async function createAccount(page, role, label) {
   await page.getByLabel('Password').fill(password);
   await page.getByRole('radio', { name: new RegExp(role) }).check();
   await page.screenshot({ path: `${shots}/signup-${label}.png` });
-  created.add(email); // register for cleanup before the request, so a failure cannot leave the account behind
   await page.getByRole('button', { name: 'Create my account' }).click();
 }
 

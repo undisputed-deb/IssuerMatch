@@ -79,7 +79,7 @@ class DeterministicMatcher {
                 + b.regionFit().toPlainString() + "/15, risk " + b.riskFit().toPlainString() + "/10, track record "
                 + b.trackRecord().toPlainString() + "/10, thesis " + b.thesisAlignment().toPlainString() + "/15.";
         String brief = "“" + need.title() + "” is raising " + need.amount().toPlainString() + " " + need.currency() + " of "
-                + need.instrument().toLowerCase() + " (" + words(need.sector()) + ", " + words(need.region()) + "). It scores "
+                + need.instrument().toLowerCase() + " (" + words(need.sector()) + ", " + words(need.region()) + ") and scores "
                 + b.total().toPlainString() + " of 100 against your mandate. This summary was generated automatically.";
         return new ModelOutput.Entry(s.investorId(), explanation, List.of("scoreFit"), brief, QUESTIONS.get(need.instrument()));
     }

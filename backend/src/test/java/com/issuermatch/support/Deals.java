@@ -37,11 +37,15 @@ public final class Deals {
         if (runStatus == null) {
             return new Party(user, id, null);
         }
+        return new Party(user, id, match(id, runStatus));
+    }
+
+    /** Ranks an existing investor for this need in a run with the given status. Returns the match result id. */
+    public UUID match(UUID investorId, String runStatus) {
         UUID run = db.queryForObject("INSERT INTO match_runs(need_id,event_id,status,reviewed_at) VALUES (?,?,?,now()) RETURNING id",
                 UUID.class, needId, UUID.randomUUID(), runStatus);
-        UUID result = db.queryForObject("INSERT INTO match_results(run_id,investor_id,rank,score,explanation,deal_brief)"
-                + " VALUES (?,?,1,80,'x','brief') RETURNING id", UUID.class, run, id);
-        return new Party(user, id, result);
+        return db.queryForObject("INSERT INTO match_results(run_id,investor_id,rank,score,explanation,deal_brief)"
+                + " VALUES (?,?,1,80,'x','brief') RETURNING id", UUID.class, run, investorId);
     }
 
     public void cleanUp() {

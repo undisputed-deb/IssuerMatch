@@ -138,13 +138,49 @@ class ModelOutputTest {
     static final String THREE = "[\"a?\",\"b?\",\"c?\"]";
 
     @Test
-    void requiresABriefAndThreeToFiveQuestions() {
+    void requiresABriefAndExactlyThreeQuestions() {
         assertThat(parse(custom("\"Good fit.\"", THREE), goodCalls())).hasSize(1);
-        for (String[] bad : new String[][] {{"\"\"", THREE}, {"null", THREE}, {"\"" + "x".repeat(801) + "\"", THREE},
-                {"\"b\"", "[\"a?\",\"b?\"]"}, {"\"b\"", "[\"1\",\"2\",\"3\",\"4\",\"5\",\"6\"]"},
+        for (String[] bad : new String[][] {{"\"\"", THREE}, {"null", THREE}, {"\"" + "x".repeat(401) + "\"", THREE},
+                {"\"b\"", "[\"a?\",\"b?\"]"}, {"\"b\"", "[\"1?\",\"2?\",\"3?\",\"4?\"]"},
                 {"\"b\"", "null"}, {"\"b\"", "[\"a?\",\"\",\"c?\"]"}, {"\"see https://evil.example\"", THREE}}) {
             assertThatThrownBy(() -> parse(custom(bad[0], bad[1]), goodCalls())).as(bad[0] + bad[1]).isInstanceOf(ModelOutput.Invalid.class);
         }
+    }
+
+    @Test
+    void theDealBriefIsAtMostTwoSentences() {
+        assertThat(parse(custom("\"Raising USD 2.5 million, e.g. for hiring. It fits your focus.\"", THREE), goodCalls())).hasSize(1);
+        assertThatThrownBy(() -> parse(custom("\"One. Two. Three.\"", THREE), goodCalls()))
+                .isInstanceOf(ModelOutput.Invalid.class).hasMessageContaining("2 sentences");
+    }
+
+    @Test
+    void questionsAreShort() {
+        String atLimit = "word ".repeat(30).strip();
+        assertThat(parse(custom("\"ok\"", "[\"" + atLimit + "\",\"b?\",\"c?\"]"), goodCalls())).hasSize(1);
+        assertThatThrownBy(() -> parse(custom("\"ok\"", "[\"" + atLimit + " more\",\"b?\",\"c?\"]"), goodCalls()))
+                .isInstanceOf(ModelOutput.Invalid.class).hasMessageContaining("20 words");
+    }
+
+    @Test
+    void questionsAimedBackAtTheInvestorAreRejected() {
+        for (String inverted : new String[] {"How flexible is your investment thesis?", "Does this fit your mandate?",
+                "What is your typical investment horizon?"}) {
+            assertThatThrownBy(() -> parse(custom("\"ok\"", "[\"" + inverted + "\",\"b?\",\"c?\"]"), goodCalls()))
+                    .as(inverted).isInstanceOf(ModelOutput.Invalid.class).hasMessageContaining("founder");
+        }
+        assertThat(parse(custom("\"ok\"", "[\"How concentrated is your loan portfolio?\",\"b?\",\"c?\"]"), goodCalls())).hasSize(1);
+    }
+
+    @Test
+    void thePromptDirectsQuestionsAtTheFounderAndCapsTheOutput() {
+        assertThat(MatchAgent.SYSTEM_PROMPT.replaceAll("\\s+", " "))
+                .contains("asked BY the investor TO the issuer's founder")
+                .contains("Never ask about the investor's own mandate")
+                .contains("exactly 3 questions of at most 20 words")
+                .contains("revenue durability", "customer concentration", "licensing or regulatory risk", "burn and runway",
+                        "valuation assumptions")
+                .contains("dealBrief is exactly 2 sentences");
     }
 
     @Test

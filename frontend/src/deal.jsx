@@ -42,12 +42,18 @@ export function Offers({ needId }) {
   );
 }
 
+/** One need's Q&A, loaded by itself. For the issuer and staff pages. */
+export function Thread({ needId, mode }) {
+  const thread = useLoad(() => api.questions(needId), [needId], (qs) => (qs.some((q) => !q.answer) ? 20000 : 0));
+  return <ThreadView needId={needId} mode={mode} thread={thread} />;
+}
+
 /**
  * The Q&A of one deal. mode "investor": own thread, can ask (suggestions are one click). mode "issuer": every thread,
- * can answer. mode "staff": read only. The server decides which threads come back.
+ * can answer. mode "staff": read only. The server decides which threads come back. The caller loads `thread`
+ * ({data, loading, error, reload}), so the investor feed can fetch every deal's questions in one request.
  */
-export function Thread({ needId, mode, suggestions = [] }) {
-  const thread = useLoad(() => api.questions(needId), [needId], (qs) => (qs.some((q) => !q.answer) ? 20000 : 0));
+export function ThreadView({ needId, mode, thread, suggestions = [] }) {
   const [draft, setDraft] = useState('');
   const [state, setState] = useState({ busy: false, error: null });
   const asked = new Set(thread.data?.map((q) => q.question));
