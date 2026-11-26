@@ -7,7 +7,7 @@ COPY src ./src
 RUN mvn -q -B package -DskipTests
 
 # Run: JRE only, unprivileged user, no build tools or sources
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:25-jre
 RUN useradd --system --uid 10001 app
 WORKDIR /app
 COPY --from=build /src/target/issuermatch-*.jar app.jar
