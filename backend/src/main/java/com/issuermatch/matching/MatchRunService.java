@@ -1,6 +1,8 @@
 package com.issuermatch.matching;
 
+import com.issuermatch.audit.AuditService;
 import com.issuermatch.matching.agent.MatchAgent;
+import com.issuermatch.matching.agent.PromptInjectionDetector;
 import com.issuermatch.matching.agent.MatchingTools;
 import com.issuermatch.matching.agent.ModelOutput;
 import com.issuermatch.messaging.OutboxService;
@@ -33,8 +35,10 @@ public class MatchRunService {
     private final JsonMapper json;
     private final MatchingTools tools;
     private final OutboxService outbox;
+    private final AuditService audit;
 
-    MatchRunService(JdbcTemplate db, JsonMapper json, MatchingTools tools, OutboxService outbox) {
+    MatchRunService(JdbcTemplate db, JsonMapper json, MatchingTools tools, OutboxService outbox, AuditService audit) {
+        this.audit = audit;
         this.db = db;
         this.json = json;
         this.tools = tools;
@@ -47,9 +51,25 @@ public class MatchRunService {
      */
     @Transactional
     public boolean claim(UUID runId, UUID needId) {
-        return db.update("UPDATE match_runs SET status = 'RUNNING', started_at = now()"
+        boolean claimed = db.update("UPDATE match_runs SET status = 'RUNNING', started_at = now()"
                         + " WHERE id = ? AND need_id = ? AND status = 'REQUESTED'",
                 runId, needId) == 1;
+        if (claimed) {
+            flagSuspiciousInput(runId, needId);
+        }
+        return claimed;
+    }
+
+    /** Mark instruction-like funding text on the run (kept even if the run fails) and put it in the audit trail. */
+    private void flagSuspiciousInput(UUID runId, UUID needId) {
+        Map<String, Object> need = db.queryForMap("SELECT title, description FROM funding_needs WHERE id = ?", needId);
+        List<String> flags = PromptInjectionDetector.detect((String) need.get("title"), (String) need.get("description"));
+        if (flags.isEmpty()) {
+            return;
+        }
+        db.update("UPDATE match_runs SET input_flags = string_to_array(?, ',') WHERE id = ?", String.join(",", flags), runId);
+        audit.record("PROMPT_INJECTION_SUSPECTED", "funding-need:" + needId, Map.of("runId", runId.toString(), "rules", flags));
+        log.warn("Run {} for need {}: instruction-like input detected {}", runId, needId, flags); // rule names only, never the text
     }
 
     @Transactional

@@ -19,6 +19,9 @@ public final class ModelOutput {
 
     static final int MAX_RANKINGS = 5;
     static final int MAX_EXPLANATION = 1500;
+    /** Markup, links and script URLs have no place in an explanation: they are how model output attacks a browser. */
+    private static final Pattern ACTIVE_CONTENT = Pattern.compile(
+            "<[a-zA-Z/!?]|https?://|\\]\\(|javascript:|data:text|vbscript:|www\\.[a-z0-9-]+\\.[a-z]", Pattern.CASE_INSENSITIVE);
     private static final Pattern UUID_PATTERN =
             Pattern.compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
 
@@ -83,6 +86,9 @@ public final class ModelOutput {
             }
             if (e.explanation() == null || e.explanation().isBlank() || e.explanation().length() > MAX_EXPLANATION) {
                 throw new Invalid("explanation must be 1-" + MAX_EXPLANATION + " characters");
+            }
+            if (ACTIVE_CONTENT.matcher(e.explanation()).find()) {
+                throw new Invalid("explanation must be plain text: no markup, links or scripts");
             }
             if (e.citedTools() == null || e.citedTools().isEmpty()) {
                 throw new Invalid("citedTools must list the tools you used for investor " + e.investorId());

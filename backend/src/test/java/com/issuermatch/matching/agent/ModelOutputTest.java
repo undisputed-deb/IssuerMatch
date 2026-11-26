@@ -102,4 +102,20 @@ class ModelOutputTest {
         String six = String.join(",", java.util.Collections.nCopies(6, one));
         assertThatThrownBy(() -> parse("{\"rankings\":[" + six + "]}", goodCalls())).isInstanceOf(ModelOutput.Invalid.class);
     }
+
+    @Test
+    void rejectsExplanationsWithMarkupOrLinks() {
+        for (String evil : new String[] {"<script>alert(1)</script>", "<img src=x onerror=alert(1)>", "See http://evil.example/leak",
+                "Click [here](https://evil.example)", "javascript:alert(1)", "![x](data:text/html;base64,AAAA)", "go to www.evil.com now",
+                "nice </p><b>fit"}) {
+            assertThatThrownBy(() -> parse(answer(inv.toString(), evil, "[\"scoreFit\"]"), goodCalls()))
+                    .as(evil).isInstanceOf(ModelOutput.Invalid.class).hasMessageContaining("plain text");
+        }
+    }
+
+    @Test
+    void ordinaryComparisonsAndSymbolsAreStillPlainText() {
+        assertThat(parse(answer(inv.toString(), "Ticket 1M < max 2M, fit > 90%. Sector & region match (see score).", "[\"scoreFit\"]"), goodCalls()))
+                .hasSize(1);
+    }
 }

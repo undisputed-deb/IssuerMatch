@@ -9,8 +9,9 @@ import tools.jackson.databind.JsonNode;
 final class MatchRunDtos {
     private MatchRunDtos() {}
 
+    /** inputFlags: instruction-like content found in the funding text. Non-empty means "read this run carefully". */
     record Summary(UUID id, UUID needId, String status, Integer tokensIn, Integer tokensOut, Integer latencyMs,
-                   String error, Instant reviewedAt, Instant createdAt) {}
+                   String error, Instant reviewedAt, Instant createdAt, List<String> inputFlags) {}
 
     /** Detail adds every tool call the agent made, with inputs and outputs: the explainability trail. */
     record Detail(Summary run, JsonNode toolCalls) {}

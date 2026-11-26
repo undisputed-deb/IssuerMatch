@@ -20,7 +20,7 @@ import tools.jackson.databind.json.JsonMapper;
 @Component
 class MatchRunQueries {
 
-    private static final String COLUMNS = "id, need_id, status, tokens_in, tokens_out, latency_ms, error, reviewed_at, created_at";
+    private static final String COLUMNS = "id, need_id, status, tokens_in, tokens_out, latency_ms, error, reviewed_at, created_at, input_flags";
 
     private final JdbcTemplate db;
     private final JsonMapper json;
@@ -67,7 +67,8 @@ class MatchRunQueries {
     private static Summary summary(ResultSet rs) throws SQLException {
         return new Summary(rs.getObject("id", UUID.class), rs.getObject("need_id", UUID.class), rs.getString("status"),
                 (Integer) rs.getObject("tokens_in"), (Integer) rs.getObject("tokens_out"), (Integer) rs.getObject("latency_ms"),
-                rs.getString("error"), instant(rs, "reviewed_at"), instant(rs, "created_at"));
+                rs.getString("error"), instant(rs, "reviewed_at"), instant(rs, "created_at"),
+                List.of((String[]) rs.getArray("input_flags").getArray()));
     }
 
     private static Instant instant(ResultSet rs, String column) throws SQLException {
