@@ -1,5 +1,11 @@
-# Local dev infrastructure. Kafka runs in KRaft mode (no Zookeeper).
-# Start:  docker compose up -d      Stop:  docker compose down
+# Local infrastructure and, with the "app" profile, the whole product. Kafka runs in KRaft mode (no Zookeeper).
+#
+# Infrastructure only (for development):  docker compose up -d
+# Everything with one command:            docker compose --env-file backend/.env --profile app up --build
+#   then open http://localhost:5173      (stop: docker compose --profile app down)
+#
+# "app" uses a local Postgres (seeded with synthetic data) so it works without IPv6 access to Supabase.
+# Login still goes through your Supabase project.
 # Kafka UI: http://localhost:8089     Broker for the app: localhost:9092
 # Ports bind to 127.0.0.1 only, so nothing here is reachable from your network.
 # No TLS/auth locally on purpose. For production see the Kafka section in the security docs (TLS + SASL + per-topic ACLs).
@@ -55,3 +61,62 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+
+  postgres:
+    image: postgres:17-alpine
+    profiles: ["app"]
+    container_name: issuermatch-pg
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust # no published port: only the api container can reach it
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./backend
+    profiles: ["app"]
+    container_name: issuermatch-api
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    env_file:
+      - path: backend/.env
+        required: false
+    environment: # these win over backend/.env
+      SUPABASE_DB_URL: jdbc:postgresql://postgres:5432/postgres
+      SUPABASE_DB_USER: postgres
+      SUPABASE_DB_PASSWORD: unused
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      APP_CORS_ORIGIN: http://localhost:5173
+      SPRING_PROFILES_ACTIVE: seed
+      LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q UP <&3"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+        VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-}
+    profiles: ["app"]
+    container_name: issuermatch-web
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:5173:80"
+
+volumes:
+  pgdata:

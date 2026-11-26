@@ -1,0 +1,5 @@
+# Secrets must never enter an image layer.
+.env
+.env.*
+target/
+*.log
