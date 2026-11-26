@@ -37,17 +37,32 @@ roles it had when it was issued, so a change shows up after the next sign-in.
 | Companies: create / change / delete | own | no | no | all (may name another owner) |
 | Funding needs: submit | own companies | no | no | any company |
 | Funding needs: list / read | own | only those a human approved it for | all | all |
+| Matched deals feed, own offers list | no | own | no | no |
+| Pass on a deal | no | own approved match | no | no |
+| Offers on a need: read | own need (rejected ones hidden) | no | all | all |
+| Deal questions: read | every thread on own need | own thread on matched needs | all | all |
+| Deal questions: ask | no | matched needs | no | no |
+| Deal questions: answer | own need | no | no | no |
 | Funding needs: request matching again | own | no | yes | yes |
 | Own investor profile (`/investors/me`) | no | yes | no | no |
 | Investors and mandates (list, read) | no | no | yes | yes |
 | Investors and mandates: change | no | no | no | yes |
 | Match runs, results, approve / reject | no | no | yes | yes |
-| Commitments: list, read, record | no | no | yes | yes |
+| Commitments: create | no | own profile, approved matches | yes | yes |
+| Commitments: list, read | no | no | yes | yes |
 | Review a flagged commitment | no | no | yes (not their own) | yes (not their own) |
 | Risk rules, dead letters, reconciliation, metrics | no | no | no | yes |
 
 An investor is "matched" to a need only when a match run for it is `APPROVED` and ranked the investor profile that user owns.
-Pending and rejected runs show nothing.
+Pending and rejected runs show nothing. `MatchVisibility` holds this rule.
+
+### What each side sees about the other
+- An investor sees the company name, the need and its own score, brief and questions. It does not see the analyst
+  explanation, the tool calls, its rank, other investors, their offers or their questions.
+- An issuer never sees the investor list or the ranking. It learns about an investor when that investor submits an offer
+  (firm, type, contact name and role, amount, terms, rationale) or asks a question (firm name).
+- Risk rule reasons go to staff. An investor receives the offer status without them.
+- Using someone else's `investorId` in an offer, or offering on an unmatched need, answers `404`.
 
 An issuer asking for someone else's data gets `404`, the same answer as for an id that does not exist, so ids cannot be probed.
 A missing role gets `403`.
@@ -57,8 +72,10 @@ Request bodies are validated before the role check, so a caller without the role
 - `match_runs.requested_by`: the user who submitted the funding need.
 - `match_runs.reviewed_by`: the analyst or admin who approved or rejected.
 - `commitments.created_by`: who recorded it.
+- `deal_questions.asked_by` and `answered_by`; `match_results.investor_decision`, `pass_reason` and `decided_at`.
 - `idempotency_keys` are per user: user B reusing user A's key creates their own commitment and sees nothing of A's.
 - `audit_log` and the `audit.events` topic: actor, action, resource, IP, time. IP is the socket address. `X-Forwarded-For` is not trusted because any client can forge it.
 
 ## Agent permissions
-The agent's tools are read-only, and `scoreFit` is bound to the funding need of its own run. A prompt injection in one issuer's text cannot make the agent read another issuer's need.
+The agent's five tools are read-only. `scoreFit` and the semantic thesis search are bound to the funding need of their own run, so a prompt injection in one issuer's text cannot make the agent read another issuer's need.
+Investor thesis text returned by the search is marked untrusted, and instruction-like content in it flags the run.

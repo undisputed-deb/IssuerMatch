@@ -3,9 +3,10 @@
 I wrote the analysis first and then built only what protects this application. All data is synthetic.
 
 ## What the app holds and who attacks it
-An API that takes funding requests from issuers, lets an LLM agent rank confidential investors, and records money commitments.
-The realistic attackers are: a logged-in issuer who wants another company's data or the investor list, a stranger on the
-internet who has no account, and whoever writes the free text that reaches the language model.
+An API that takes funding requests from issuers, lets an LLM agent rank confidential investors, and records money offers.
+The realistic attackers are: a logged-in issuer who wants another company's data or the investor list, an investor who
+wants unmatched deals or a rival's offers and questions, a stranger who signs up in public, and whoever writes the free
+text that reaches the language model (issuers in funding needs, investors in their thesis).
 
 ## Four questions
 | Question | Answer | Why for this app |
@@ -33,15 +34,15 @@ internet who has no account, and whoever writes the free text that reaches the l
 | Item | Applies | Control here |
 |---|---|---|
 | LLM01 Prompt injection | Yes, highest | Untrusted text fenced and escaped, instruction-like content flagged for the reviewer, tool allowlist, need-bound `scoreFit`. |
-| LLM02 Sensitive information disclosure | Yes | The model sees only what read-only tools return. Issuers never see investor results. |
+| LLM02 Sensitive information disclosure | Yes | The model sees only what read-only tools return. Issuers never see rankings, and an investor's brief and questions may not name another investor. |
 | LLM03 Supply chain | Yes | Dependency scan and pinned model name. |
 | LLM04 Data and model poisoning | No | The app trains nothing. |
 | LLM05 Improper output handling | Yes | Strict JSON schema, investors must come from this run's search, explanations with markup or links are rejected, the UI renders plain text. |
-| LLM06 Excessive agency | Yes | Four read-only tools, 12-call budget, one deadline, no write path, human approval. |
+| LLM06 Excessive agency | Yes | Five read-only tools, 12-call budget, one deadline, no write path, human approval. |
 | LLM07 System prompt leakage | Low | The prompt holds no secrets, so leaking it gives an attacker nothing. |
-| LLM08 Vector and embedding weaknesses | No | No vector store. |
+| LLM08 Vector and embedding weaknesses | Yes | Investors write the text that gets embedded. The search returns it marked untrusted, injection patterns flag the run, and similarity adds at most 15 of 100 points. |
 | LLM09 Misinformation | Yes | Scores come from Java. Every explanation cites tool calls that the reviewer can open. |
-| LLM10 Unbounded consumption | Yes | Rate limits on the endpoints that start a model call, token logging, timeout. |
+| LLM10 Unbounded consumption | Yes | Rate limits on the endpoints that start a model call, timeout, circuit breaker and a daily token budget. |
 
 ## Controls: attack stopped, reason, resume line
 | Control | Attack it stops | Why it matters here | Resume line |
@@ -57,7 +58,8 @@ internet who has no account, and whoever writes the free text that reaches the l
 ## Secrets
 `GEMINI_API_KEY` and the database password come from environment variables (`backend/.env` locally, never committed).
 gitleaks runs before each commit and in CI. The frontend receives only the publishable Supabase key.
-The app does not use `SUPABASE_SECRET_KEY`.
+Public signup needs a server-side Supabase admin key (`SUPABASE_SERVICE_ROLE_KEY`, or `SUPABASE_SECRET_KEY`). That key can
+manage every account in the project, so only the signup client reads it, and the client refuses to create staff roles.
 
 ## Kafka
 Locally the broker listens on 127.0.0.1 without TLS or authentication, which is acceptable for synthetic data on one machine.

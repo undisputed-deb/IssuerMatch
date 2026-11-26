@@ -20,9 +20,34 @@ That makes rankings repeatable and testable, and a prompt injection cannot chang
 I check that each ranked investor came from a search in that run and was scored.
 
 **Agent limits** (`RunToolbox`, `MatchAgent`, `ModelOutput`).
-The model gets four read-only tools, 12 calls and one deadline shared with its single repair retry.
+The model gets five read-only tools, 12 calls and one deadline shared with its single repair retry.
 Its JSON must match a strict shape, cite tools that ran and contain no markup or links.
-When anything fails, the run ends as `FAILED` with a generic message and the need goes back to `SUBMITTED`.
+When the model fails, the deterministic matcher takes over; a run fails when nobody qualifies, and the need goes back to `SUBMITTED`.
+
+**Degraded mode** (`MatchExecutor`, `DeterministicMatcher`).
+A circuit breaker and a daily token budget sit in front of the model.
+The fallback ranks with the same Java scorer and fills the brief and questions from templates.
+I label the run so the reviewer knows no model wrote the text.
+
+**Thesis search** (`matching/embedding`, `FitScorer`).
+Investors describe their thesis in free text, which I embed into 768 numbers and search with pgvector.
+Similarity is worth 15 of 100 points, next to mandate, ticket, region, risk and track record.
+Hard constraints such as excluded investor types disqualify outright, because a good score must not override a deal breaker.
+
+**Two-sided visibility** (`MatchVisibility`, `DealService`).
+An investor sees a deal after a person approves a run that ranked its own profile.
+Everything else answers 404, and issuers learn about an investor when it offers or asks.
+I broke two of those checks on purpose and the tests caught both.
+
+**Investor offers** (`CommitmentService`).
+An offer is a commitment with stake, terms and a rationale, sent to the same endpoint staff use.
+That keeps one path for idempotency, locks, risk rules, events and reconciliation.
+The idempotency hash covers the new fields, and requests without them hash as before, so old keys still replay.
+
+**Public signup** (`signup/`).
+The server creates the Supabase user and sets the role itself, and accepts two role strings.
+The admin key stays on the server, and a second check in the client class refuses staff roles.
+Accounts are confirmed without an email check, which I would change for real users.
 
 **Prompt injection** (`PromptInjectionDetector`, `MatchAgent.userPrompt`).
 I treat the funding text as data: fenced, angle brackets escaped, and never able to choose tools or permissions.
@@ -74,14 +99,14 @@ I fixed an N+1 from 52 statements to 3 with batch fetching, because a join fetch
 The load test showed the outbox publisher sending about 180 events per second, so I batched the sends.
 The backlog fell from 105,334 to 439, while request latency rose a little.
 
-## 15 likely questions
+## Likely questions
 
 1. **Why Kafka instead of calling the agent in the request?** A model call takes seconds and can fail. The API answers 202 at once and a consumer retries or dead-letters the work.
 2. **Is your delivery exactly once?** No. It is at least once with idempotent consumers, which gives one effect per event.
 3. **What happens if Kafka is down?** Submissions still return 202 and wait in the outbox. `chaos.sh` stops the broker and shows the event processed after it returns.
 4. **What if the app dies during a model call?** The run stays `RUNNING` until a reaper fails it after five minutes and releases the need. A late result cannot revive it.
 5. **Why is the agent not one database transaction?** It would hold a connection for up to a minute. An atomic claim from `REQUESTED` to `RUNNING` gives idempotency instead.
-6. **How do you stop the model inventing investors?** The id must appear in this run's search results and have a `scoreFit` call. The database also has a foreign key.
+6. **How do you stop the model inventing investors?** The id must appear in one of this run's two searches and pass `scoreFit` without a disqualifier. The database also has a foreign key.
 7. **Optimistic or pessimistic locking?** Pessimistic row locks, because several rules read history and need it stable. The need row also keeps a version column that capacity changes bump.
 8. **How would this scale to several instances?** The outbox uses `SKIP LOCKED` and consumers share a group. Rate limits would need Redis, and topics need more partitions.
 9. **Where could you still lose data?** Dead letters are copied from Kafka, so a long database outage past Kafka retention would lose them. The copier retries without limit to narrow that window.
@@ -89,12 +114,16 @@ The backlog fell from 105,334 to 439, while request latency rose a little.
 11. **Why 404 and not 403 for another user's data?** A 403 confirms the id exists.
 12. **Why not store roles in your own table?** Supabase `app_metadata` is already server controlled and travels in the token. The trade-off is that a removed role lasts until the token expires.
 13. **How do you test without paying for the model?** An `LlmClient` interface with a scripted fake that calls the real tools. One browser test uses real Gemini.
-14. **What is the weakest part?** Injection detection is pattern based, and rate limits are per instance.
-15. **What would you do next?** Shared rate limiting, TLS and ACLs on Kafka, tracing across services and an independent security review.
+14. **What is the weakest part?** Signup does not verify email, injection detection is pattern based, and rate limits are per instance.
+15. **What would you do next?** Email confirmation, real exchange rates, shared rate limiting, TLS and ACLs on Kafka, and an independent security review.
+16. **Why can an investor not see why risk rejected its offer?** The reasons reveal limits and history. Staff see them and can explain.
+17. **What stops one investor reading another's questions?** The query filters by the profile the caller owns, and a test with two matched investors checks the response body.
+18. **What happens if an investor passes and offers at the same moment?** Both lock the investor row, so one runs first. A live offer blocks a pass; an offer after a pass replaces the decision.
 
 ## Resume bullets (measured numbers only)
-- Built an agentic investor-matching service (Java 21, Spring Boot, Kafka, Spring AI) with 37 REST endpoints and 281 integration and unit tests at 94.6% line coverage.
+- Built a two-sided capital-matching platform (Java 21, Spring Boot, Kafka, Spring AI, pgvector, React) with 4 roles, 48 REST endpoints and 350 integration and unit tests at 94.3% line coverage.
 - Designed a retry-safe commitment API with idempotency keys, row locking and a runtime-tunable risk engine, sustaining about 620 requests/s at p95 133 ms with zero errors in a single-laptop load test.
 - Found and fixed an event-publishing bottleneck through load testing, cutting the post-load backlog from 105,334 events to 439.
+- Combined semantic thesis search with deterministic scoring and a fallback matcher, so a model outage still yields a reviewable ranking.
 - Hardened the system against IDOR, JWT forgery and prompt injection, and fixed 7 dependency vulnerabilities (4 high) found by SBOM scanning in CI.
 - Cut a list endpoint from 52 SQL statements to 3 and the core matching query from 17.9 ms to 0.83 ms on 200,000 rows.

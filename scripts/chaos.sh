@@ -28,9 +28,14 @@ need_body() { printf '{"issuerId":"%s","title":"chaos","description":"chaos","se
 issuer=$(call -X POST localhost:8080/issuers -d '{"name":"Chaos Co","sector":"FINTECH","region":"EUROPE"}' | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
 
 echo "== 1. model call fails (invalid Gemini key) =="
+# one investor that fits, so the deterministic fallback has someone to rank
+sql -c "WITH i AS (INSERT INTO investors(name,investor_type,region) VALUES ('Chaos Fund','VC','EUROPE') RETURNING id)
+  INSERT INTO mandates(investor_id,sector,region,min_ticket,max_ticket,risk_level,instruments)
+  SELECT id,'FINTECH','EUROPE',100,10000,'LOW','{EQUITY}' FROM i" >/dev/null
 need=$(call -X POST localhost:8080/funding-needs -d "$(need_body "$issuer")" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
-wait_for "SELECT count(*) FROM match_runs WHERE need_id='$need' AND status='FAILED'" 1 90 && echo "run FAILED safely" || echo "UNEXPECTED: run did not fail"
-echo "stored error: $(sql -c "SELECT error FROM match_runs WHERE need_id='$need'")"
+wait_for "SELECT count(*) FROM match_runs WHERE need_id='$need' AND status='PENDING_REVIEW' AND execution_mode='DEGRADED_DETERMINISTIC'" 1 90 \
+  && echo "matched without the model, waiting for a human" || echo "UNEXPECTED: no deterministic fallback"
+echo "stored reason: $(sql -c "SELECT degraded_reason FROM match_runs WHERE need_id='$need'")"
 echo "need status: $(sql -c "SELECT status FROM funding_needs WHERE id='$need'")"
 
 echo "== 2. Kafka down =="

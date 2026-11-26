@@ -26,25 +26,29 @@ IssuerMatch: Spring Boot + Kafka + Spring AI agent that ranks investors for issu
 - Task 40 DONE: scripts/load/{run.sh,seed.sql,commitments.js} + compose profile "load" (Postgres :5433). docs/LOAD_TEST.md: 619 req/s, p95 133ms, 0 errors; found outbox bottleneck -> batched publisher (500), scheduler pool 4, ledger concurrency 3; backlog 105,334 -> 439, catch-up >10min -> 27s, reconciliation 1499 -> 0.
 - Real Supabase boot with V1-V16 verified: reconciliation 0 mismatches, 0 dead letters. run.sh refuses to start if :8080 is busy and waits for app shutdown before removing containers.
 - Phases 5-9 of the original spec DONE: security (SBOM scan + pins, hostile input fixes, Bucket4j rate limits, CORS/headers, injection flags + output checks, log hygiene + correlation ids, required secrets, 503 on DB down), SECURITY_AUDIT.md (13 findings), retention cleanup (V18), actuator + metrics, React frontend (frontend/, e2e scripts/e2e.sh), Dockerfiles + compose profile "app" (`docker compose --env-file backend/.env --profile app up --build`), GitHub Actions CI (green on 67f690c) + Dependabot (PRs open, unmerged), README.md, INTERVIEW_NOTES.md, docs/SECURITY.md.
-- 281 backend tests, 94.6% line / 85.3% branch coverage.
+- (End of original spec: 281 tests. Current counts are in the Phase 5 line below.)
 - GitGuardian alert handled: no real secret was ever committed (gitleaks full history clean, none of the .env values in any commit). Credential-shaped test literals (fake `AQ.` key text, JWT-shaped strings, Basic auth `admin:admin`) are now built at runtime so scanners cannot flag them.
 
-## In progress
-- nothing
-
-## Next steps
-CURRENT TASK (user spec, 2026-11-26) -- PHASE 1 DONE (302 backend tests, frontend build ok, real signup verified + test users deleted):
+- Two-sided platform spec (2026-11-26), ALL 5 PHASES DONE. PHASE 1 DONE (302 backend tests, frontend build ok, real signup verified + test users deleted):
  INVESTOR role; POST /auth/signup (signup/ pkg, SupabaseAuthAdminClient real=RestSupabaseAuthAdminClient, test fake=support/FakeSupabaseAuthClient; key = SUPABASE_SERVICE_ROLE_KEY else SUPABASE_SECRET_KEY; email auto-confirmed = no ownership proof, documented); signup rate limit 5/min/IP + 30 global; V19 investors.owner_user_id UNIQUE; GET/PUT /investors/me (name,type,region only until Phase 2); MatchVisibility = single definition of investor visibility (APPROVED run + owned profile); GET /commitments?status= for staff; frontend: Login with Create account, App.jsx areaOf() staff/issuer/investor, pages Company, Profile, RiskReview, DeadLetters, Reconciliation; e2e/signup.spec.js (SIGNUP_E2E=1, creates+deletes real users).
  PHASE 2 DONE (314 tests, build ok, browser tests ok): V20 investors profile (type column renamed investor_type; BANK->PRIVATE_CREDIT, ANGEL->ANGEL_SYNDICATE; new fields; currency; profile_completed); PUT/GET /investors/me takes full ProfileRequest incl. 1-10 mandates (replaces all). V21 funding_needs intake (currency, company_stage, target_close_date, use_of_funds jsonb, min_ticket_size, hard_constraints jsonb typed HardConstraints, instrument_terms jsonb). InstrumentTerms sealed (EquityTerms/DebtTerms/ConvertibleTerms) with custom tools.jackson reader on a "type" discriminator; MEZZANINE uses DEBT terms; terms optional in API. common/Currencies: 10 supported ISO codes + SYNTHETIC static FX to USD. Mandate tickets are in the investor's currency (convert in Phase 3).
  PHASE 3 DONE (335 tests, build ok, live Gemini verified: execution_mode AGENT, semantic search + real embeddings): images -> pgvector/pgvector:pg17 (tests, compose app+load); V22 (vector ext, investors.thesis_embedding + hnsw, funding_needs.embedding, match_runs.execution_mode/degraded_reason, match_results.score_breakdown/deal_brief/suggested_diligence_questions, llm_daily_usage). matching/embedding (EmbeddingClient, gemini-embedding-001 768d, Embeddings indexer every 15s; FakeEmbeddingClient in tests). FitScorer: mandateFit25 ticketFit25 regionFit15 riskFit10 trackRecord10 thesisAlignment15 + disqualifiers (HardConstraints + min ticket); ScoringService converts to USD. scoreFit now takes investorIds list (batch, keeps 12-call budget); 5th tool searchInvestorsByThesisSemantic (need-bound). ModelOutput: up to 10, requires dealBrief + 3-5 questions, no other investor names in them, disqualified cannot be ranked. MatchExecutor: Resilience4j breaker + daily token budget -> DeterministicMatcher (DEGRADED_DETERMINISTIC). GET /investor/matches (InvestorFeed, no explanation/rank). Risk rules FX: RiskContext.amountUsd, ticket ranges in need currency. UI: InvestorDeals, score.jsx Breakdown, RunDetail.
  Note: searchInvestorsByMandate param is ticketSizeUsd. Test props: breaker minimum-calls AND window huge, embeddings initial-delay 1h. Old seeded investors (Supabase, old compose volume) have no thesis -> thesisAlignment 0 until profiles saved or volume reset (`docker compose --profile app down -v`).
  PHASE 4 DONE (349 tests, build ok, e2e/deal.spec.js passed with real Supabase + Gemini, test users deleted): V23 offer columns on commitments (proposed_stake_pct, proposed_terms_json, investment_rationale, investor_decision) + match_results (investor_decision INTERESTED|PASSED, pass_reason, decided_at; spec's "PASS_REASON" = pass_reason column). V24 deal_questions (RLS). POST /commitments allows INVESTOR: own profile only, rationale required, stake only for EQUITY, unmatched -> 404, risk rule reasons hidden from investor; idempotency hash covers offer fields (old hashes unchanged). deal/ package: GET /funding-needs/{id}/offers (owner issuer sees non-REJECTED, staff all), GET /investor/offers, POST /investor/matches/{matchResultId}/pass (409 if live offer), questions GET/POST + /{qid}/answer (50 per investor per need). UI: deal.jsx (Offers, Thread), OfferDrawer.jsx, InvestorDeals decision panel, Needs "Offers and questions", RunDetail + RiskReview show offers.
- Remaining phases: evolve into a two-sided platform. Execute in order, after EACH phase run `./mvnw test` + `npm run build`, report, commit (author = user only).
-5. Phase 5: isolation + end-to-end tests, README/AUTH/INTERVIEW_NOTES/HANDOFF update with verified counts.
-Rules: Jackson 3 only; RLS on every new table; Testcontainers Kafka 3.8.0; no live Gemini/Supabase Auth in tests; no credential-shaped literals; Maven deps in LAST </dependencies>.
+ PHASE 5 DONE (350 tests, 94.3% lines / 85.4% branches, 48 endpoints, build ok, browser smoke + deal flow ok, chaos.sh ok, dependency scan 0 findings): platform/TwoSidedPlatformFlowTest (whole flow via API + outsiders attack it; mutation-checked), chaos.sh step 1 now expects DEGRADED_DETERMINISTIC fallback, README/AUTH/SECURITY/SECURITY_AUDIT/RISK/INTERVIEW_NOTES updated.
+
+## In progress
+- nothing
+
+## Next steps
+1. No task pending. Optional follow-ups: email confirmation on signup; repeat load test + security audit for the new features; merge or close Dependabot PRs; deploy to a host.
+
+## Standing rules
+- Rules: Jackson 3 only; RLS on every new table; Testcontainers Kafka 3.8.0; no live Gemini/Supabase Auth in tests; no credential-shaped literals; Maven deps in LAST </dependencies>.
+
 
 ## Decisions & gotchas
-- Never print .env values. Names only. SUPABASE_SECRET_KEY unused.
+- Never print .env values. Names only. SUPABASE_SECRET_KEY is the signup admin key fallback (SUPABASE_SERVICE_ROLE_KEY preferred).
 - Tests: Docker Desktop must run (`open -a Docker`); use dangerouslyDisableSandbox for mvn test/run. Test Kafka image must be apache/kafka:3.8.0 (3.9.0 fails in Testcontainers: advertised.listeners 0.0.0.0). Compose uses 3.9.0 fine.
 - Tests share one DB container per JVM: tests that COMMIT (EventPipelineTest) leave rows; other tests must use relative counts.
 - Run app: `cd backend && ./mvnw spring-boot:run` (reads backend/.env). Seed: add `-Dspring-boot.run.profiles=seed` (idempotent; slow over network, wait for "Synthetic data created").
@@ -56,4 +60,5 @@ Rules: Jackson 3 only; RLS on every new table; Testcontainers Kafka 3.8.0; no li
 - Auth is built (see docs/AUTH.md). Issuer owner = caller; only ADMIN may name another owner.
 - If DB connect fails (no IPv6) use Supabase pooler string; username format differs. Do not guess. Direct host works on this machine.
 - Pins: Boot 4.1.3, Spring AI 2.0.3 (Gemini starter), Postgres 17, Java 21.
+- Coverage (JaCoCo not in pom): `V=0.8.16; ./mvnw org.jacoco:jacoco-maven-plugin:${V}:prepare-agent test org.jacoco:jacoco-maven-plugin:${V}:report` (braces: zsh eats `$V:report`). Old target/site/jacoco files go stale.
 - Test files must not contain credential-shaped literals (build them at runtime). GitGuardian also scans pushes, gitleaks pre-commit only scans staged content.

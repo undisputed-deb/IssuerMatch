@@ -36,13 +36,16 @@ Severity reflects impact on this application. Each row names the fix commit and 
 | Two investors race for the last capacity | One wins | `CommitmentCapacityTest` |
 | Injection asking the agent to list all investors, call other tools or read another need | Tools unchanged, cross-need `scoreFit` refused | `MatchFlowTest`, `MatchAgentLoopTest` |
 | Agent loops on tools, model hangs, model returns bad JSON or invented investors | Capped, timed out, retried once, failed safely | `MatchAgent*Test`, `ModelOutputTest` |
-| Model provider rejects the key | Run `FAILED`, need released, generic stored message | `chaos.sh` |
+| Model provider rejects the key | Deterministic matcher takes over (run `FAILED` and need released if nobody qualifies), generic stored message | `chaos.sh`, `MatchExecutorTest` |
 | Kafka down during submission | 202, event waits in the outbox, processed after recovery | `chaos.sh` |
 | Secrets in logs after failure injection | None found for the Gemini key, database password or access token | `chaos.sh` |
 
 ## Accepted risks and open items
 | Item | Why it stays | What would fix it |
 |---|---|---|
+| Signup confirms accounts without proof of email ownership | Demo has no mail setup | Supabase confirmation emails |
+| A taken email answers 409, revealing that an account exists | Users need to know why signup failed | Same reply for both cases plus an email |
+| The features added after this audit (signup, offers, Q&A, semantic search) have tests but no second audit pass | Added later | Repeat this audit |
 | Rate limits are per instance | One instance in this project | Shared store (Bucket4j with Redis) |
 | Injection detection is pattern based and evadable | The structural defences do not depend on it | A classifier model as a second signal |
 | Kafka has no TLS or SASL locally | Bound to 127.0.0.1, synthetic data | TLS, SASL and per-topic ACLs in production |

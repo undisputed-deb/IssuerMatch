@@ -1,6 +1,8 @@
 # Commitment risk engine
 
-Every commitment goes through the rules below before it is accepted. Each rule answers PASS, FLAG or BLOCK with a reason.
+Every commitment, recorded by staff or offered by an investor, goes through the rules below before it is accepted.
+Investors receive the resulting status without the rule reasons. Money thresholds are in USD; amounts in other currencies
+are converted with the fixed synthetic rates. Each rule answers PASS, FLAG or BLOCK with a reason.
 All results are stored in `risk_decisions`, together with the thresholds that were in force at that moment.
 
 | Overall result | Commitment status | HTTP | Capacity |
