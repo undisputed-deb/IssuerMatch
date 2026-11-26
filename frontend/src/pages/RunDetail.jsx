@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api.js';
+import { Offers, Thread } from '../deal.jsx';
 import { Breakdown } from '../score.jsx';
 import { Button, ErrorBox, Loading, PageTitle, Status, money, useLoad, when, words } from '../ui.jsx';
 
@@ -110,6 +111,13 @@ export default function RunDetail({ id }) {
                   <Button tone="plain" onClick={() => setReview({ ...review, confirm: null })}>Cancel</Button>
                 </div>
               )}
+            </div>
+          )}
+
+          {run.status === 'APPROVED' && (
+            <div className="mt-10 space-y-6">
+              <Offers needId={run.needId} />
+              <Thread needId={run.needId} mode="staff" />
             </div>
           )}
 

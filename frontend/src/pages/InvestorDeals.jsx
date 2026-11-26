@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { api } from '../api.js';
+import { Thread, terms as offerTerms } from '../deal.jsx';
+import OfferDrawer from '../OfferDrawer.jsx';
 import { Breakdown } from '../score.jsx';
-import { ErrorBox, Loading, PageTitle, money, useLoad, when, words } from '../ui.jsx';
+import { Button, ErrorBox, Field, Loading, PageTitle, Status, control, money, useLoad, when, words } from '../ui.jsx';
 
 const TERM_LABELS = {
   targetValuation: 'Target valuation', arrUsd: 'ARR (USD)', yoyGrowthPct: 'Growth % (year on year)', boardSeat: 'Board seat offered',
@@ -13,21 +16,27 @@ const show = (v) => (typeof v === 'boolean' ? (v ? 'Yes' : 'No') : typeof v === 
 /** The deals a human approved for this investor. Everything here is text; nothing is rendered as HTML. */
 export default function InvestorDeals() {
   const deals = useLoad(api.investorMatches, [], () => 15000);
+  const offers = useLoad(api.investorOffers, [], () => 15000);
+  const reload = () => Promise.all([deals.reload(), offers.reload()]);
 
   return (
     <>
       <PageTitle title="Matched deals">{deals.data && `${deals.data.length} approved for your firm`}</PageTitle>
-      <ErrorBox error={deals.error} onRetry={deals.reload} />
+      <ErrorBox error={deals.error || offers.error} onRetry={reload} />
       {deals.loading && <Loading />}
       {deals.data?.length === 0 && <p>No deals yet. A deal appears here after our review team approves a match with your firm.</p>}
       <ul className="space-y-8">
-        {deals.data?.map((d) => <Deal key={d.matchResultId} deal={d} />)}
+        {deals.data?.map((d) => (
+          <Deal key={d.matchResultId} deal={d} onChange={reload}
+            offers={offers.data?.filter((o) => o.needId === d.needId) ?? []} />
+        ))}
       </ul>
     </>
   );
 }
 
-function Deal({ deal }) {
+function Deal({ deal, offers, onChange }) {
+  const [drawer, setDrawer] = useState(false);
   const terms = Object.entries(deal.instrumentTerms ?? {}).filter(([k, v]) => k !== 'type' && v != null);
   return (
     <li className="border border-rule bg-sheet">
@@ -50,12 +59,7 @@ function Deal({ deal }) {
             <h3 className="font-semibold">Why it fits your thesis</h3>
             <p className="max-w-prose">{deal.dealBrief}</p>
           </section>
-          <section>
-            <h3 className="font-semibold">Suggested diligence questions</h3>
-            <ul className="mt-1 divide-y divide-rule border-y border-rule">
-              {deal.suggestedDiligenceQuestions.map((q) => <li key={q} className="py-2">{q}</li>)}
-            </ul>
-          </section>
+          <Thread needId={deal.needId} mode="investor" suggestions={deal.suggestedDiligenceQuestions} />
           <details>
             <summary className="flex min-h-11 items-center font-medium text-brand">The issuer’s description and terms</summary>
             <p className="max-w-prose whitespace-pre-wrap break-words">{deal.description}</p>
@@ -72,11 +76,69 @@ function Deal({ deal }) {
             </dl>
           </details>
         </div>
-        <aside aria-label="Match score">
-          <p className="mb-2 font-mono text-3xl">{Number(deal.score).toFixed(1)}<span className="text-base text-soft"> / 100 fit</span></p>
-          <Breakdown breakdown={deal.scoreBreakdown} />
+        <aside aria-label="Match score and your decision" className="space-y-6">
+          <div>
+            <p className="mb-2 font-mono text-3xl">{Number(deal.score).toFixed(1)}<span className="text-base text-soft"> / 100 fit</span></p>
+            <Breakdown breakdown={deal.scoreBreakdown} />
+          </div>
+          <Decision deal={deal} offers={offers} onOffer={() => setDrawer(true)} onChange={onChange} />
         </aside>
       </div>
+      {drawer && <OfferDrawer deal={deal} investorId={deal.investorId} onClose={() => setDrawer(false)} onSent={onChange} />}
     </li>
+  );
+}
+
+/** Your offers on this deal, then the two choices: make an offer, or pass with an optional reason. */
+function Decision({ deal, offers, onOffer, onChange }) {
+  const [passing, setPassing] = useState(false);
+  const [reason, setReason] = useState('');
+  const [state, setState] = useState({ busy: false, error: null });
+  const live = offers.some((o) => o.status !== 'REJECTED');
+  const passed = deal.investorDecision === 'PASSED';
+
+  async function pass(event) {
+    event.preventDefault();
+    setState({ busy: true, error: null });
+    try {
+      await api.pass(deal.matchResultId, reason);
+      setPassing(false);
+      setState({ busy: false, error: null });
+    } catch (error) {
+      setState({ busy: false, error });
+    }
+    await onChange();
+  }
+
+  return (
+    <section aria-label="Your decision" className="space-y-3 border-t-2 border-ink pt-3">
+      {offers.length > 0 && (
+        <ul className="divide-y divide-rule border-b border-rule text-sm">
+          {offers.map((o) => (
+            <li key={o.commitmentId} className="space-y-1 py-2">
+              <p className="flex items-center justify-between gap-2"><span className="font-mono">{money(o.amount)} {o.currency}</span><Status value={o.status} /></p>
+              <p className="break-words text-soft">{offerTerms(o)}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      {passed && <p role="status" className="text-sm"><b>You passed on this deal.</b>{deal.passReason && ` Reason: ${deal.passReason}`}</p>}
+      <div className="flex flex-wrap gap-3">
+        <Button onClick={onOffer}>{live ? 'Submit another offer' : 'Match & Submit Offer'}</Button>
+        {!live && !passed && !passing && <Button tone="plain" onClick={() => setPassing(true)}>Pass</Button>}
+      </div>
+      {passing && !passed && (
+        <form onSubmit={pass} className="space-y-2">
+          <Field label="Why are you passing? (optional)">
+            <textarea className={`${control} py-2`} rows={2} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} />
+          </Field>
+          <div className="flex flex-wrap gap-3">
+            <Button type="submit" tone="danger" busy={state.busy}>Confirm pass</Button>
+            <Button tone="plain" onClick={() => setPassing(false)}>Cancel</Button>
+          </div>
+        </form>
+      )}
+      <ErrorBox error={state.error} />
+    </section>
   );
 }

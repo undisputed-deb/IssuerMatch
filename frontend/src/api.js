@@ -74,7 +74,8 @@ async function send(url, options) {
   }
 }
 
-async function request(path, { method = 'GET', body, headers = {} } = {}) {
+// `decision`: a body to accept even with an error status (a blocked offer is a stored answer, sent as 422)
+async function request(path, { method = 'GET', body, headers = {}, decision } = {}) {
   const res = await send(API + path, {
     method,
     headers: {
@@ -89,7 +90,7 @@ async function request(path, { method = 'GET', body, headers = {} } = {}) {
     throw new ApiError(401, 'UNAUTHORIZED', 'Your session ended. Sign in again.');
   }
   const data = res.status === 204 ? null : await res.json().catch(() => null);
-  if (!res.ok) {
+  if (!res.ok && !decision?.(data)) {
     const wait = res.headers.get('Retry-After');
     const message = data?.error?.message || `Request failed (${res.status})`;
     throw new ApiError(res.status, data?.error?.code || 'ERROR', wait ? `${message}. Try again in ${wait}s.` : message);
@@ -115,6 +116,14 @@ export const api = {
   rematch: (id) => request(`/funding-needs/${id}/match`, { method: 'POST' }),
   runs: (page = 0) => request(`/match-runs?size=20&page=${page}`),
   investorMatches: () => request('/investor/matches'),
+  investorOffers: () => request('/investor/offers'),
+  submitOffer: (offer, key) =>
+    request('/commitments', { method: 'POST', body: offer, headers: { 'Idempotency-Key': key }, decision: (d) => d?.status === 'REJECTED' }),
+  pass: (matchResultId, reason) => request(`/investor/matches/${matchResultId}/pass`, { method: 'POST', body: { reason } }),
+  offers: (needId) => request(`/funding-needs/${needId}/offers`),
+  questions: (needId) => request(`/funding-needs/${needId}/questions`),
+  ask: (needId, question) => request(`/funding-needs/${needId}/questions`, { method: 'POST', body: { question } }),
+  answer: (needId, id, answer) => request(`/funding-needs/${needId}/questions/${id}/answer`, { method: 'POST', body: { answer } }),
   run: (id) => request(`/match-runs/${id}`),
   results: (id) => request(`/match-runs/${id}/results`),
   review: (id, approve) => request(`/match-runs/${id}/${approve ? 'approve' : 'reject'}`, { method: 'POST' }),

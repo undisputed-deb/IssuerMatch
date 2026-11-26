@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/commitments")
-@PreAuthorize("hasAnyRole('ANALYST','ADMIN')") // analysts record commitments on behalf of investors
+@PreAuthorize("hasAnyRole('ANALYST','ADMIN')") // staff record and review commitments; investors may only create (below)
 class CommitmentController {
 
     private final CommitmentService service;
@@ -33,9 +33,11 @@ class CommitmentController {
      * 201 ACCEPTED, 202 PENDING_REVIEW (flagged), 422 REJECTED (blocked, with the reasons). All three are stored decisions.
      */
     @PostMapping
+    @PreAuthorize("hasAnyRole('INVESTOR','ANALYST','ADMIN')") // an investor submits offers for its own profile only
     ResponseEntity<String> create(@RequestHeader(value = "Idempotency-Key", required = false) String key,
                                   @Valid @RequestBody CreateRequest request) {
-        Saved saved = service.create(CurrentUser.get().id(), key, request);
+        CurrentUser me = CurrentUser.get();
+        Saved saved = service.create(me.id(), !me.isStaff(), key, request);
         ResponseEntity.BodyBuilder response = ResponseEntity.status(saved.status()).contentType(MediaType.APPLICATION_JSON);
         if (saved.replayed()) {
             response.header("Idempotent-Replayed", "true");

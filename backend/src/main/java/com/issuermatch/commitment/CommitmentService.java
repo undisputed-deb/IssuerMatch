@@ -56,20 +56,31 @@ class CommitmentService {
 
     /** Idempotent: the whole thing (key + commitment + decisions + capacity) is one transaction. */
     @Transactional
-    Saved create(UUID actor, String idempotencyKey, CreateRequest request) {
+    Saved create(UUID actor, boolean asInvestor, String idempotencyKey, CreateRequest request) {
         if (idempotencyKey == null || !KEY.matcher(idempotencyKey).matches()) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
                     "Idempotency-Key header is required (1-128 characters: letters, digits, . _ : -)");
         }
-        return idempotency.execute(actor, idempotencyKey, sha256(request.canonical()), () -> doCreate(actor, request));
+        if (asInvestor) {
+            // the profile must be the caller's own; someone else's id looks exactly like a missing one
+            if (count("SELECT count(*) FROM investors WHERE id = ? AND owner_user_id = ?", request.investorId(), actor) == 0) {
+                throw new NotFoundException("Investor not found");
+            }
+            if (request.investmentRationale() == null || request.investmentRationale().isBlank()) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "investmentRationale is required: say why you like this company");
+            }
+        }
+        return idempotency.execute(actor, idempotencyKey, sha256(request.canonical()),
+                () -> doCreate(actor, asInvestor, request));
     }
 
-    private Saved doCreate(UUID actor, CreateRequest r) {
+    private Saved doCreate(UUID actor, boolean asInvestor, CreateRequest r) {
         // Lock the need's row first. From here until commit nobody else can commit to this need, so every rule
         // sees the same capacity and exposure numbers we do. Concurrent commitments to one need queue up.
-        List<NeedRow> needs = db.query("SELECT issuer_id, remaining_capacity, currency FROM funding_needs WHERE id = ? FOR UPDATE",
+        List<NeedRow> needs = db.query("SELECT issuer_id, remaining_capacity, currency, instrument FROM funding_needs WHERE id = ?"
+                        + " FOR UPDATE",
                 (rs, n) -> new NeedRow(rs.getObject("issuer_id", UUID.class), rs.getBigDecimal("remaining_capacity"),
-                        rs.getString("currency")), r.needId());
+                        rs.getString("currency"), rs.getString("instrument")), r.needId());
         if (needs.isEmpty()) {
             throw new NotFoundException("Funding need not found");
         }
@@ -84,7 +95,13 @@ class CommitmentService {
         // Only an investor an analyst approved for this need may commit to it.
         if (count("SELECT count(*) FROM match_results r JOIN match_runs m ON m.id = r.run_id"
                 + " WHERE m.need_id = ? AND r.investor_id = ? AND m.status = 'APPROVED'", r.needId(), r.investorId()) == 0) {
+            if (asInvestor) {
+                throw new NotFoundException("Funding need not found"); // do not confirm a deal this investor cannot see
+            }
             throw new ApiException(HttpStatus.CONFLICT, "Investor is not an approved match for this funding need");
+        }
+        if (r.proposedStakePct() != null && !"EQUITY".equals(need.instrument())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "proposedStakePct applies to equity deals only");
         }
 
         RiskEngine.Outcome outcome = risk.evaluate(new RiskContext(r.needId(), r.investorId(), r.amount(),
@@ -100,19 +117,29 @@ class CommitmentService {
             remaining = takeCapacity(r.needId(), r.amount());
         }
 
-        var created = db.queryForMap("INSERT INTO commitments(need_id, investor_id, amount, status, created_by)"
-                        + " VALUES (?,?,?,?,?) RETURNING id, created_at",
-                r.needId(), r.investorId(), r.amount(), status, actor);
+        String terms = r.proposedTerms() == null ? null : json.writeValueAsString(r.proposedTerms());
+        var created = db.queryForMap("INSERT INTO commitments(need_id, investor_id, amount, status, created_by,"
+                        + " proposed_stake_pct, proposed_terms_json, investment_rationale, investor_decision)"
+                        + " VALUES (?,?,?,?,?,?,jsonb_strip_nulls(?::jsonb),?,?) RETURNING id, created_at",
+                r.needId(), r.investorId(), r.amount(), status, actor, r.proposedStakePct(), terms, r.investmentRationale(),
+                asInvestor ? "INTERESTED" : null);
         UUID id = (UUID) created.get("id");
         for (RiskEngine.RuleResult res : outcome.results()) {
             db.update("INSERT INTO risk_decisions(commitment_id, rule_id, verdict, reason, params) VALUES (?,?,?,?,?::jsonb)",
                     id, res.ruleId(), res.decision().verdict().name(), res.decision().reason(),
                     json.writeValueAsString(res.params()));
         }
-        List<DecisionView> views = outcome.results().stream()
+        if (asInvestor && outcome.verdict() != Verdict.BLOCK) {
+            db.update("UPDATE match_results r SET investor_decision = 'INTERESTED', pass_reason = NULL, decided_at = now()"
+                    + " FROM match_runs m WHERE m.id = r.run_id AND m.need_id = ? AND r.investor_id = ? AND m.status = 'APPROVED'",
+                    r.needId(), r.investorId());
+        }
+        // rule reasons describe internal limits and history: staff see them, investors get the status only
+        List<DecisionView> views = asInvestor ? List.of() : outcome.results().stream()
                 .map(x -> new DecisionView(x.ruleId(), x.decision().verdict().name(), x.decision().reason())).toList();
         Response body = new Response(id, r.needId(), r.investorId(), r.amount(), status, remaining, views,
-                ((java.sql.Timestamp) created.get("created_at")).toInstant());
+                ((java.sql.Timestamp) created.get("created_at")).toInstant(), r.proposedStakePct(),
+                terms == null ? null : json.valueToTree(r.proposedTerms()), r.investmentRationale());
 
         // Only a real decision is audited. A replay (same Idempotency-Key) never reaches this line.
         metrics.commitmentDecided(status);
@@ -191,10 +218,14 @@ class CommitmentService {
     @Transactional(readOnly = true)
     Response get(UUID id) {
         List<Response> rows = db.query("SELECT c.id, c.need_id, c.investor_id, c.amount, c.status, c.created_at,"
-                        + " n.remaining_capacity FROM commitments c JOIN funding_needs n ON n.id = c.need_id WHERE c.id = ?",
+                        + " n.remaining_capacity, c.proposed_stake_pct, c.proposed_terms_json::text AS terms, c.investment_rationale"
+                        + " FROM commitments c JOIN funding_needs n ON n.id = c.need_id WHERE c.id = ?",
                 (rs, n) -> new Response(rs.getObject("id", UUID.class), rs.getObject("need_id", UUID.class),
                         rs.getObject("investor_id", UUID.class), rs.getBigDecimal("amount"), rs.getString("status"),
-                        rs.getBigDecimal("remaining_capacity"), List.of(), rs.getTimestamp("created_at").toInstant()), id);
+                        rs.getBigDecimal("remaining_capacity"), List.of(), rs.getTimestamp("created_at").toInstant(),
+                        rs.getBigDecimal("proposed_stake_pct"),
+                        rs.getString("terms") == null ? null : json.readTree(rs.getString("terms")),
+                        rs.getString("investment_rationale")), id);
         if (rows.isEmpty()) {
             throw new NotFoundException("Commitment not found");
         }
@@ -203,12 +234,12 @@ class CommitmentService {
                 "SELECT rule_id, verdict, reason FROM risk_decisions WHERE commitment_id = ? ORDER BY rule_id",
                 (rs, n) -> new DecisionView(rs.getString("rule_id"), rs.getString("verdict"), rs.getString("reason")), id);
         return new Response(r.id(), r.needId(), r.investorId(), r.amount(), r.status(), r.remainingCapacity(),
-                decisions, r.createdAt());
+                decisions, r.createdAt(), r.proposedStakePct(), r.proposedTerms(), r.investmentRationale());
     }
 
     // ---- helpers ----
 
-    private record NeedRow(UUID issuerId, BigDecimal remaining, String currency) {}
+    private record NeedRow(UUID issuerId, BigDecimal remaining, String currency, String instrument) {}
 
     /**
      * Reserve capacity with one conditional UPDATE (check and change together). With the row already locked

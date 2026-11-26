@@ -51,7 +51,7 @@ export default function Company() {
           <Button type="submit" busy={state.busy}>Add company</Button>
         </div>
       </form>
-      {companies.data?.items.length > 0 && <Needs title="My funding needs" canRematch empty="Nothing submitted yet." />}
+      {companies.data?.items.length > 0 && <Needs title="My funding needs" canRematch deals="issuer" empty="Nothing submitted yet." />}
     </>
   );
 }

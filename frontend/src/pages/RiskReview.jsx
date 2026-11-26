@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api.js';
+import { terms } from '../deal.jsx';
 import { Button, ErrorBox, Loading, PageTitle, money, useLoad, when } from '../ui.jsx';
 
 /** Flagged commitments waiting for a second person. */
@@ -7,7 +8,7 @@ export default function RiskReview() {
   const queue = useLoad(async () => {
     const page = await api.commitments('PENDING_REVIEW');
     const details = await Promise.all(page.items.map((c) => api.commitment(c.id)));
-    return page.items.map((c, i) => ({ ...c, decisions: details[i].decisions }));
+    return page.items.map((c, i) => ({ ...details[i], ...c, decisions: details[i].decisions }));
   }, []);
   const [error, setError] = useState(null);
 
@@ -36,6 +37,9 @@ export default function RiskReview() {
               <p className="font-mono text-lg">{money(c.amount)}</p>
             </div>
             <p className="text-sm text-soft">{when(c.createdAt)}</p>
+            {c.investmentRationale && (
+              <p className="mt-2 max-w-prose text-sm whitespace-pre-wrap break-words"><b>Investor offer:</b> {terms(c)}. {c.investmentRationale}</p>
+            )}
             <ul className="mt-2 space-y-1 text-sm">
               {c.decisions.filter((d) => d.verdict !== 'PASS').map((d) => (
                 <li key={d.rule}><b className="font-mono text-flag">{d.verdict} {d.rule}</b> {d.reason}</li>
