@@ -8,4 +8,4 @@ import java.util.List;
 
 /** One mandate, with its ticket range already converted to US dollars. */
 public record MandateProfile(Sector sector, Region region, BigDecimal minUsd, BigDecimal maxUsd,
-                             RiskLevel riskLevel, List<String> instruments) {}
+                             RiskLevel riskLevel, List<String> instruments, List<String> targetStages) {}

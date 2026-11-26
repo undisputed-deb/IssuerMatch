@@ -37,7 +37,7 @@ export default function Needs({ title = 'Funding needs', canRematch = false, emp
             {canRematch && n.status === 'SUBMITTED'
               ? <Button tone="plain" onClick={() => rematch(n.id)}>Retry matching</Button>
               : <span aria-hidden="true" />}
-            <Deal needId={n.id} mode={deals} />
+            <Deal needId={n.id} mode={deals} onDecided={needs.reload} />
           </li>
         ))}
       </ul>
@@ -46,14 +46,14 @@ export default function Needs({ title = 'Funding needs', canRematch = false, emp
 }
 
 /** Loaded only once opened, so a long list does not fire two requests per row. */
-function Deal({ needId, mode }) {
+function Deal({ needId, mode, onDecided }) {
   const [opened, setOpened] = useState(false);
   return (
     <details className="sm:col-span-4" onToggle={(e) => e.currentTarget.open && setOpened(true)}>
       <summary className="flex min-h-11 items-center font-medium text-brand">Offers and questions</summary>
       {opened && (
         <div className="space-y-6 pb-3">
-          <Offers needId={needId} />
+          <Offers needId={needId} canDecide={mode === 'issuer'} onDecided={onDecided} />
           <Thread needId={needId} mode={mode} />
         </div>
       )}

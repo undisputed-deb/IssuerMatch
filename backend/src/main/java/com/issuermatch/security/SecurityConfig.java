@@ -96,7 +96,7 @@ class SecurityConfig {
         }
         CorsConfiguration cors = new CorsConfiguration();
         cors.setAllowedOrigins(List.of(origin));
-        cors.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE"));
+        cors.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE"));
         cors.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key", "X-Correlation-Id"));
         cors.setExposedHeaders(List.of("Idempotent-Replayed", "Retry-After", "X-Correlation-Id"));
         cors.setMaxAge(3600L);

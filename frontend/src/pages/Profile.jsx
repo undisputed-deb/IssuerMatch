@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api.js';
 import {
-  Button, CURRENCIES, ErrorBox, Field, INSTRUMENTS, INVESTOR_TYPES, Input, PageTitle, REGIONS, RISKS, SECTORS, Section, Select,
-  control, number, words,
+  Button, CURRENCIES, ErrorBox, Field, INSTRUMENTS, INVESTOR_TYPES, Input, PARTICIPATION_ROLES, PageTitle, REGIONS, RISKS, SECTORS,
+  STAGES, Section, Select, Verified, control, number, words,
 } from '../ui.jsx';
 
-const MANDATE = { sector: 'FINTECH', region: 'EUROPE', minTicket: '', maxTicket: '', riskLevel: 'MEDIUM', instruments: ['EQUITY'] };
+const MANDATE = {
+  sector: 'FINTECH', region: 'EUROPE', minTicket: '', maxTicket: '', riskLevel: 'MEDIUM', instruments: ['EQUITY'], targetStages: [],
+};
 const EMPTY = {
   contactName: '', roleTitle: '', companyName: '', websiteUrl: '', investorType: 'VC', region: 'EUROPE', aumOrRevenueUsd: '',
-  deployableCapitalUsd: '', currency: 'USD', longThesisDescription: '', mandates: [MANDATE],
+  deployableCapitalUsd: '', currency: 'USD', longThesisDescription: '', participationRole: '', deploymentStatus: 'ACTIVE',
+  mandates: [MANDATE],
 };
 
 const toForm = (p) =>
@@ -32,10 +35,11 @@ export default function Profile({ profile, onSaved }) {
       const saved = await api.saveProfile({
         ...form,
         websiteUrl: form.websiteUrl || null,
+        participationRole: form.participationRole || null,
         aumOrRevenueUsd: number(form.aumOrRevenueUsd),
         deployableCapitalUsd: number(form.deployableCapitalUsd),
-        mandates: form.mandates.map(({ sector, region, minTicket, maxTicket, riskLevel, instruments }) =>
-          ({ sector, region, minTicket: number(minTicket), maxTicket: number(maxTicket), riskLevel, instruments })),
+        mandates: form.mandates.map(({ sector, region, minTicket, maxTicket, riskLevel, instruments, targetStages }) =>
+          ({ sector, region, minTicket: number(minTicket), maxTicket: number(maxTicket), riskLevel, instruments, targetStages })),
       });
       setState({ busy: false, error: null, saved: true });
       onSaved(saved);
@@ -47,7 +51,10 @@ export default function Profile({ profile, onSaved }) {
   return (
     <>
       <PageTitle title={profile?.profileCompleted ? 'My investor profile' : 'Set up your investor profile'}>
-        {profile?.profileCompleted ? 'Matching uses this profile.' : 'Complete it before deals can be matched to you.'}
+        <span className="flex items-center gap-2">
+          <Verified when={profile?.verified} />
+          {profile?.profileCompleted ? 'Matching uses this profile.' : 'Complete it before deals can be matched to you.'}
+        </span>
       </PageTitle>
       {state.saved && <p role="status" className="mb-4 border-l-4 border-good bg-good-bg px-4 py-3 text-good">Profile saved.</p>}
       <form onSubmit={save} className="grid max-w-4xl gap-6 sm:grid-cols-2">
@@ -58,6 +65,24 @@ export default function Profile({ profile, onSaved }) {
           {input('websiteUrl', 'Website (optional)', { type: 'url', maxLength: 300, placeholder: 'https://' })}
           <Select label="Investor type" value={form.investorType} onChange={set('investorType')} options={INVESTOR_TYPES} />
           <Select label="Home region" value={form.region} onChange={set('region')} options={REGIONS} />
+        </Section>
+        <Section title="Deal participation">
+          <Field label="Your usual role in a round">
+            <select className={control} value={form.participationRole} onChange={set('participationRole')}>
+              <option value="">Not said</option>
+              {PARTICIPATION_ROLES.map((r) => <option key={r} value={r}>{words(r)}</option>)}
+            </select>
+          </Field>
+          <label className="flex min-h-11 cursor-pointer items-start gap-3 self-end">
+            <input type="checkbox" role="switch" className="mt-1 size-5" checked={form.deploymentStatus === 'ACTIVE'}
+              onChange={(e) => setForm({ ...form, deploymentStatus: e.target.checked ? 'ACTIVE' : 'PAUSED' })} />
+            <span>
+              <span className="text-sm font-medium">Actively deploying capital</span>
+              <span className="block text-xs text-soft">
+                {form.deploymentStatus === 'ACTIVE' ? 'New deals can be matched to you.' : 'Paused: no new deals are matched to you.'}
+              </span>
+            </span>
+          </label>
         </Section>
         <Section title="Capital">
           {input('aumOrRevenueUsd', 'Assets under management or revenue, USD (optional)', { type: 'number', min: 0, step: 'any' })}
@@ -91,6 +116,18 @@ export default function Profile({ profile, onSaved }) {
                     <label key={x} className="flex min-h-11 cursor-pointer items-center gap-1 text-sm">
                       <input type="checkbox" checked={m.instruments.includes(x)}
                         onChange={(e) => setMandate(i, { instruments: e.target.checked ? [...m.instruments, x] : m.instruments.filter((v) => v !== x) })} />
+                      {words(x)}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <fieldset className="sm:col-span-3">
+                <legend className="text-sm font-medium">Company stages (none ticked: not said)</legend>
+                <div className="flex flex-wrap gap-x-4">
+                  {STAGES.map((x) => (
+                    <label key={x} className="flex min-h-11 cursor-pointer items-center gap-1 text-sm">
+                      <input type="checkbox" checked={m.targetStages.includes(x)}
+                        onChange={(e) => setMandate(i, { targetStages: e.target.checked ? [...m.targetStages, x] : m.targetStages.filter((v) => v !== x) })} />
                       {words(x)}
                     </label>
                   ))}

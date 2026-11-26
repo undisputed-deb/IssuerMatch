@@ -32,7 +32,7 @@ public class FundingNeed {
     private String currency = "USD";
     @Enumerated(EnumType.STRING) private CompanyStage companyStage;
     private LocalDate targetCloseDate;
-    @Convert(converter = JsonColumns.UseOfFunds.class) @ColumnTransformer(write = "?::jsonb")
+    @Convert(converter = JsonColumns.StringList.class) @ColumnTransformer(write = "?::jsonb")
     @Column(columnDefinition = "jsonb") private List<String> useOfFunds = List.of();
     private BigDecimal minTicketSize;
     @Convert(converter = JsonColumns.Constraints.class) @ColumnTransformer(write = "?::jsonb")

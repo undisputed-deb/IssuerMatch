@@ -2,7 +2,9 @@
 // All of it is other people's text, rendered as text nodes only.
 import { useState } from 'react';
 import { api } from './api.js';
-import { Button, ErrorBox, Loading, Status, control, money, useLoad, when, words } from './ui.jsx';
+import {
+  Button, ErrorBox, Loading, Status, Verified, Website, control, money, offerStatus, useLoad, when, words,
+} from './ui.jsx';
 
 /** "Stake 10% · Valuation 8,000,000 · ..." for whatever the investor proposed. */
 export function terms(offer) {
@@ -16,8 +18,8 @@ export function terms(offer) {
   ].filter(Boolean).join(' · ') || '—';
 }
 
-/** Offers on one funding need, for its issuer and for staff. */
-export function Offers({ needId }) {
+/** Offers on one funding need, for its issuer and for staff. Only the issuer (canDecide) accepts or declines. */
+export function Offers({ needId, canDecide = false, onDecided }) {
   const offers = useLoad(() => api.offers(needId), [needId], () => 20000);
   return (
     <section aria-label="Investor offers">
@@ -27,18 +29,83 @@ export function Offers({ needId }) {
       {offers.data?.length === 0 && <p className="text-sm text-soft">No offers yet.</p>}
       <ul className="mt-1 divide-y divide-rule border-y border-rule empty:hidden">
         {offers.data?.map((o) => (
-          <li key={o.commitmentId} className="space-y-1 py-3">
+          <li key={o.commitmentId} className="space-y-2 py-3">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <p className="font-medium">{o.investorFirm} <span className="text-sm font-normal text-soft">{words(o.investorType)}</span></p>
-              <p className="flex items-center gap-3"><span className="font-mono text-lg">{money(o.amount)} {o.currency}</span><Status value={o.status} /></p>
+              <p className="font-mono text-lg">{money(o.amount)} {o.currency}</p>
+              <Status value={offerStatus(o)} />
             </div>
-            <p className="text-sm text-soft">{[o.contactName, o.contactRole].filter(Boolean).join(', ') || 'No contact given'} · {when(o.createdAt)}</p>
+            <InvestorSummary offer={o} />
+            <p className="text-sm text-soft">Offered {when(o.createdAt)}</p>
             <p className="text-sm break-words"><b>Terms:</b> {terms(o)}</p>
             <p className="max-w-prose text-sm whitespace-pre-wrap break-words"><b>Why they like it:</b> {o.investmentRationale ?? 'Recorded by staff, no rationale.'}</p>
+            {canDecide && offerStatus(o) === 'OFFER_AWAITING' && (
+              <Decide offer={o} onDone={async () => { await offers.reload(); await onDecided?.(); }} />
+            )}
           </li>
         ))}
       </ul>
     </section>
+  );
+}
+
+/** Who is offering: the firm facts a company may see. */
+function InvestorSummary({ offer: o }) {
+  const facts = [
+    ['Contact', [o.contactName, o.contactRole].filter(Boolean).join(', ')],
+    ['Assets or revenue', o.aumOrRevenueUsd != null && `${money(o.aumOrRevenueUsd)} USD`],
+    ['Deployable capital', o.deployableCapitalUsd != null && `${money(o.deployableCapitalUsd)} USD`],
+    ['Website', o.websiteUrl && <Website url={o.websiteUrl} />],
+  ].filter(([, value]) => value);
+  return (
+    <section aria-label={`About ${o.investorFirm}`} className="max-w-xl border border-rule bg-paper p-3 text-sm">
+      <p className="flex flex-wrap items-center gap-2">
+        <span className="text-base font-medium">{o.investorFirm}</span>
+        <span className="text-soft">{words(o.investorType)}</span>
+        <Verified when={o.verified} />
+      </p>
+      <dl className="mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4">
+        {facts.map(([label, value]) => (
+          <div key={label} className="contents"><dt className="text-soft">{label}</dt><dd className="break-words">{value}</dd></div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+/** Accept or decline, with a second click because the answer is final. */
+function Decide({ offer, onDone }) {
+  const [choice, setChoice] = useState(null);
+  const [state, setState] = useState({ busy: false, error: null });
+
+  async function send() {
+    setState({ busy: true, error: null });
+    try {
+      await api.decideOffer(offer.commitmentId, choice);
+      await onDone();
+    } catch (error) {
+      setState({ busy: false, error });
+      await onDone(); // someone else may have changed the offer
+    }
+  }
+
+  return (
+    <div>
+      {choice === null ? (
+        <div className="flex flex-wrap gap-3">
+          <Button onClick={() => setChoice(true)}>Accept offer</Button>
+          <Button tone="danger" onClick={() => setChoice(false)}>Decline offer</Button>
+        </div>
+      ) : (
+        <div role="group" aria-label="Confirm your answer" className="flex flex-wrap items-center gap-3">
+          <p className="font-medium">
+            {choice ? 'Accept this offer?' : `Decline this offer? ${money(offer.amount)} ${offer.currency} opens up again.`} This is final.
+          </p>
+          <Button tone={choice ? 'primary' : 'danger'} busy={state.busy} onClick={send}>Yes, {choice ? 'accept' : 'decline'}</Button>
+          <Button tone="plain" disabled={state.busy} onClick={() => setChoice(null)}>Cancel</Button>
+        </div>
+      )}
+      <ErrorBox error={state.error} />
+    </div>
   );
 }
 

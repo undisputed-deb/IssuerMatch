@@ -45,6 +45,16 @@ test('sign in, submit a need, review the ranked result and approve it', async ({
   await page.screenshot({ path: `${shots}/3-runs.png`, fullPage: true });
   await row.getByRole('link', { name: title }).click();
 
+  // When the model is unavailable (free-tier quota) the app ranks without it. That is fine here unless a live model is asked for.
+  await expect(page.getByRole('heading', { name: title })).toBeVisible();
+  const mode = await page.evaluate(async (api) => {
+    const token = sessionStorage.getItem('issuermatch.token');
+    const res = await fetch(`${api}/match-runs/${location.hash.split('/').pop()}`, { headers: { Authorization: `Bearer ${token}` } });
+    return (await res.json()).run.executionMode;
+  }, API);
+  console.log(`match ran in mode ${mode}`);
+  if (process.env.REQUIRE_LIVE_MODEL === 'true') expect(mode, 'REQUIRE_LIVE_MODEL=true: the model must have answered').toBe('AGENT');
+
   await expect(page.getByRole('alert').filter({ hasText: 'instruction-like content' })).toBeVisible();
   await page.getByText('Why this rank').first().click();
   await expect(page.getByText('Evidence:').first()).toBeVisible();

@@ -106,10 +106,10 @@ class MatchFlowTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].rank").value(1))
                 .andExpect(jsonPath("$[0].investorId").value(strong.toString()))
-                .andExpect(jsonPath("$[0].score").value(75.0))
+                .andExpect(jsonPath("$[0].score").value(72.5))
                 .andExpect(jsonPath("$[0].citedTools[0]").value("scoreFit"))
                 .andExpect(jsonPath("$[1].investorId").value(weak.toString()))
-                .andExpect(jsonPath("$[1].score").value(65.0));
+                .andExpect(jsonPath("$[1].score").value(62.5));
 
         // explainability: every tool call is on the run, with usage and latency
         mvc.perform(get("/match-runs/" + runId))

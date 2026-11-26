@@ -16,6 +16,8 @@ public class Issuer {
     @Enumerated(EnumType.STRING) private Sector sector;
     @Enumerated(EnumType.STRING) private Region region;
     private UUID ownerUserId;
+    @Embedded private CompanyProfile profile;
+    @Column(insertable = false, updatable = false) private boolean verified; // written by VerificationService only
     @CreationTimestamp private Instant createdAt;
 
     protected Issuer() {}
@@ -33,6 +35,13 @@ public class Issuer {
         this.region = region;
     }
 
+    public void describe(CompanyProfile profile) {
+        this.profile = profile;
+    }
+
+    /** Never null: Hibernate reads a row with every profile column empty as no object at all. */
+    public CompanyProfile getProfile() { return profile == null ? CompanyProfile.EMPTY : profile; }
+    public boolean isVerified() { return verified; }
     public UUID getId() { return id; }
     public String getName() { return name; }
     public Sector getSector() { return sector; }

@@ -24,7 +24,8 @@ class CommitmentLedgerConsumer {
     private static final Map<String, Kind> KINDS = Map.of(
             Topics.COMMITMENT_REQUESTED, new Kind("CommitmentRequested", "REQUESTED"),
             Topics.COMMITMENT_ACCEPTED, new Kind("CommitmentAccepted", "ACCEPTED"),
-            Topics.COMMITMENT_REJECTED, new Kind("CommitmentRejected", "REJECTED"));
+            Topics.COMMITMENT_REJECTED, new Kind("CommitmentRejected", "REJECTED"),
+            Topics.COMMITMENT_DECLINED, new Kind("CommitmentDeclined", "DECLINED"));
 
     private static final int MAX_REASON = 2000;
 
@@ -38,8 +39,8 @@ class CommitmentLedgerConsumer {
         this.db = db;
     }
 
-    @KafkaListener(topics = {Topics.COMMITMENT_REQUESTED, Topics.COMMITMENT_ACCEPTED, Topics.COMMITMENT_REJECTED},
-            concurrency = "3") // one thread per topic partition; inserts are independent and idempotent
+    @KafkaListener(topics = {Topics.COMMITMENT_REQUESTED, Topics.COMMITMENT_ACCEPTED, Topics.COMMITMENT_REJECTED,
+            Topics.COMMITMENT_DECLINED}, concurrency = "4") // one thread per topic partition; inserts are independent and idempotent
     public void record(ConsumerRecord<String, String> message) {
         EventEnvelope event = parser.parse(message.value());
         Kind kind = KINDS.get(message.topic());

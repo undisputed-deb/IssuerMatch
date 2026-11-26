@@ -47,7 +47,8 @@ class InvestorService {
         mandates.deleteAll(mandates.findAllByInvestorId(saved.getId()));
         mandates.flush();
         List<Mandate> fresh = mandates.saveAllAndFlush(r.mandates().stream()
-                .map(m -> new Mandate(saved, m.sector(), m.region(), m.minTicket(), m.maxTicket(), m.riskLevel(), m.instrumentNames()))
+                .map(m -> new Mandate(saved, m.sector(), m.region(), m.minTicket(), m.maxTicket(), m.riskLevel(), m.instrumentNames(),
+                        m.stageNames()))
                 .toList());
         audit.record("INVESTOR_PROFILE_SAVED", "investor:" + saved.getId(), java.util.Map.of("mandates", fresh.size()));
         return InvestorResponse.from(saved, fresh);
@@ -82,7 +83,7 @@ class InvestorService {
 
     MandateResponse addMandate(UUID investorId, MandateRequest r) {
         Mandate m = new Mandate(find(investorId), r.sector(), r.region(), r.minTicket(), r.maxTicket(),
-                r.riskLevel(), r.instrumentNames());
+                r.riskLevel(), r.instrumentNames(), r.stageNames());
         return MandateResponse.from(mandates.saveAndFlush(m));
     }
 
@@ -99,7 +100,7 @@ class InvestorService {
 
     MandateResponse updateMandate(UUID investorId, UUID mandateId, MandateRequest r) {
         Mandate m = findMandate(investorId, mandateId);
-        m.update(r.sector(), r.region(), r.minTicket(), r.maxTicket(), r.riskLevel(), r.instrumentNames());
+        m.update(r.sector(), r.region(), r.minTicket(), r.maxTicket(), r.riskLevel(), r.instrumentNames(), r.stageNames());
         return MandateResponse.from(mandates.saveAndFlush(m));
     }
 

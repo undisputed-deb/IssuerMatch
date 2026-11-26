@@ -71,7 +71,7 @@ class MatchRunServiceTest {
                 "SELECT investor_id, rank, score, explanation FROM match_results WHERE run_id = ? ORDER BY rank", run);
         assertThat(rows).hasSize(2);
         assertThat(rows.get(0).get("investor_id")).isEqualTo(strong);
-        assertThat(((Number) rows.get(0).get("score")).doubleValue()).isEqualTo(75.0);
+        assertThat(((Number) rows.get(0).get("score")).doubleValue()).isEqualTo(72.5);
         assertThat(((Number) rows.get(1).get("score")).doubleValue()).isLessThan(50.0);
         assertThat(rows.get(1).get("explanation")).isEqualTo("Score 99, best ever!"); // text kept, number not trusted
     }
@@ -207,11 +207,29 @@ class MatchRunServiceTest {
         assertThat(db.queryForList("SELECT investor_id FROM match_results WHERE run_id = ?", UUID.class, run)).containsExactly(allowed);
         var r = db.queryForMap("SELECT score_breakdown->>'ticketFit' AS ticket, deal_brief, suggested_diligence_questions->>0 AS q"
                 + " FROM match_results WHERE run_id = ?", run);
-        assertThat(r.get("ticket")).isEqualTo("25.00");
+        assertThat(r.get("ticket")).isEqualTo("20.00");
         assertThat(r.get("deal_brief")).isEqualTo("brief");
         assertThat(r.get("q")).isEqualTo("a?");
         assertThat(db.queryForObject("SELECT execution_mode || ':' || degraded_reason FROM match_runs WHERE id = ?", String.class, run))
                 .isEqualTo("DEGRADED_DETERMINISTIC:why");
+    }
+
+    @Test
+    void onlyTheBestFiveAreKeptAndAFirmThatPausedMidRunIsDropped() {
+        givenNeedAndRun();
+        var all = new java.util.ArrayList<ModelOutput.Entry>();
+        for (int i = 0; i < 6; i++) all.add(entry(investor("FINTECH,EUROPE,500000,2000000,MEDIUM"), "ok"));
+        UUID paused = investor("FINTECH,EUROPE,500000,2000000,MEDIUM");
+        UUID weakest = investor("ENERGY,LATAM,5000000,9000000,HIGH");
+        all.add(0, entry(weakest, "listed first"));
+        all.add(1, entry(paused, "listed second"));
+        service.claim(run, need);
+        db.update("UPDATE investors SET deployment_status = 'PAUSED' WHERE id = ?", paused); // after the search, before the save
+
+        service.complete(run, need, new MatchAgent.Result(all, new MatchAgent.Run("{}", 1, 1, 1, List.of())));
+
+        assertThat(db.queryForList("SELECT investor_id FROM match_results WHERE run_id = ? ORDER BY rank", UUID.class, run))
+                .hasSize(5).doesNotContain(paused, weakest);
     }
 
     @Test

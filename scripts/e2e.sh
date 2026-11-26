@@ -1,5 +1,6 @@
 #!/bin/sh
-# Browser tests: real Supabase login and a real Gemini call.
+# Browser tests: real Supabase login and a real Gemini call. If Gemini is unavailable the app ranks without it and the
+# test still passes; REQUIRE_LIVE_MODEL=true makes that a failure.
 #   scripts/e2e.sh            staff flow on a throwaway database
 #   scripts/e2e.sh accounts   signup and investor/issuer flow against the running "app" stack; creates real accounts
 # Whatever happens, the accounts and E2E rows the tests created are deleted on exit.

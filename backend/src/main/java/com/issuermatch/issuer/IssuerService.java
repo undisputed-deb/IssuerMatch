@@ -1,13 +1,16 @@
 package com.issuermatch.issuer;
 
 import com.issuermatch.audit.AuditService;
+import com.issuermatch.common.ApiException;
 import com.issuermatch.common.NotFoundException;
 import com.issuermatch.security.CurrentUser;
 import com.issuermatch.security.Role;
+import java.time.Year;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,7 +42,9 @@ class IssuerService {
             owner = r.ownerUserId();
         }
         // saveAndFlush so a duplicate name fails here (-> 409), not at commit time
-        Issuer saved = repo.saveAndFlush(new Issuer(r.name(), r.sector(), r.region(), owner));
+        Issuer issuer = new Issuer(r.name(), r.sector(), r.region(), owner);
+        issuer.describe(checked(r.profile()));
+        Issuer saved = repo.saveAndFlush(issuer);
         audit.record("ISSUER_CREATED", "issuer:" + saved.getId(), Map.of("ownerUserId", owner.toString()));
         return saved;
     }
@@ -60,6 +65,9 @@ class IssuerService {
     Issuer update(UUID id, IssuerDtos.UpdateRequest r) {
         Issuer issuer = getWritable(id);
         issuer.update(r.name(), r.sector(), r.region());
+        if (r.profile() != null) {
+            issuer.describe(checked(r.profile()));
+        }
         Issuer saved = repo.saveAndFlush(issuer);
         audit.record("ISSUER_UPDATED", "issuer:" + id, Map.of());
         return saved;
@@ -69,6 +77,13 @@ class IssuerService {
         repo.delete(getWritable(id));
         repo.flush();
         audit.record("ISSUER_DELETED", "issuer:" + id, Map.of());
+    }
+
+    private static CompanyProfile checked(CompanyProfile profile) {
+        if (profile != null && profile.foundedYear() != null && profile.foundedYear() > Year.now().getValue()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "foundedYear cannot be in the future");
+        }
+        return profile;
     }
 
     /** Visible AND changeable: an admin, or the issuer-role owner. An analyst who can see it still cannot change it. */

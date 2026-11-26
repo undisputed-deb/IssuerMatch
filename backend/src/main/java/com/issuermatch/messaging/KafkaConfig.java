@@ -29,6 +29,8 @@ class KafkaConfig {
     @Bean NewTopic commitmentAcceptedDlt() { return topic(Topics.COMMITMENT_ACCEPTED + ".DLT"); }
     @Bean NewTopic commitmentRejected() { return topic(Topics.COMMITMENT_REJECTED); }
     @Bean NewTopic commitmentRejectedDlt() { return topic(Topics.COMMITMENT_REJECTED + ".DLT"); }
+    @Bean NewTopic commitmentDeclined() { return topic(Topics.COMMITMENT_DECLINED); }
+    @Bean NewTopic commitmentDeclinedDlt() { return topic(Topics.COMMITMENT_DECLINED + ".DLT"); }
 
     /** Pinned explicitly: Spring Kafka 4 changed its default suffix to "-dlt". Partition -1 = producer picks. */
     private static TopicPartition deadLetterTopic(org.apache.kafka.clients.consumer.ConsumerRecord<?, ?> record, Exception e) {

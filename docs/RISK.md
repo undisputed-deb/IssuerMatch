@@ -41,6 +41,14 @@ and the admin API can tune it. `RiskEngineTest` does exactly this with a deliber
 - Approve: becomes `ACCEPTED`. Reject: becomes `REJECTED` and the held capacity returns to the raise.
 - Only `PENDING_REVIEW` can be reviewed, once (otherwise 409).
 
+## The issuer's answer
+`POST /commitments/{id}/issuer-accept` or `/issuer-decline`, by the owner of the company raising the money.
+- Only an `ACCEPTED` commitment the issuer has not answered (otherwise 409). Anyone else's commitment is 404.
+- The status stays `ACCEPTED`; the answer is stored in `issuer_decision`.
+- Decline locks the need, returns the capacity, records `COMMITMENT_ISSUER_DECLINED` and publishes `commitment.declined`
+  in one transaction. A declined commitment no longer counts toward concentration exposure. It still counts toward
+  velocity and duplicate limits, because those measure how often an investor submits.
+
 ## Concurrency
 Each commitment locks two rows before any rule runs: the funding need (`FOR UPDATE`), then the investor (`FOR NO KEY UPDATE`).
 Requests for the same need queue, and so do requests from the same investor, so every rule judges consistent numbers.

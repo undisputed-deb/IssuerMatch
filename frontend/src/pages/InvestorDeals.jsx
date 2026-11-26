@@ -3,7 +3,9 @@ import { api } from '../api.js';
 import { ThreadView, terms as offerTerms } from '../deal.jsx';
 import OfferDrawer from '../OfferDrawer.jsx';
 import { Breakdown } from '../score.jsx';
-import { Button, ErrorBox, Field, Loading, PageTitle, Status, control, money, useLoad, when, words } from '../ui.jsx';
+import {
+  Button, ErrorBox, Field, Loading, PageTitle, Status, Verified, Website, control, money, offerStatus, useLoad, when, words,
+} from '../ui.jsx';
 
 const TERM_LABELS = {
   targetValuation: 'Target valuation', arrUsd: 'ARR (USD)', yoyGrowthPct: 'Growth % (year on year)', boardSeat: 'Board seat offered',
@@ -46,7 +48,7 @@ function Deal({ deal, offers, thread, onChange }) {
         <div>
           <h2 className="text-xl font-semibold">{deal.title}</h2>
           <p className="text-sm text-soft">
-            {deal.issuerName} · {words(deal.sector)} · {words(deal.region)}
+            {deal.issuerName} <Verified when={deal.company.verified} /> · {words(deal.sector)} · {words(deal.region)}
             {deal.companyStage && ` · ${words(deal.companyStage)}`} · approved {when(deal.approvedAt)}
           </p>
         </div>
@@ -61,6 +63,7 @@ function Deal({ deal, offers, thread, onChange }) {
             <h3 className="font-semibold">Why it fits your thesis</h3>
             <p className="max-w-prose">{deal.dealBrief}</p>
           </section>
+          <Company name={deal.issuerName} company={deal.company} />
           <ThreadView needId={deal.needId} mode="investor" thread={thread} suggestions={deal.suggestedDiligenceQuestions} />
           <details>
             <summary className="flex min-h-11 items-center font-medium text-brand">The issuer’s description and terms</summary>
@@ -91,12 +94,35 @@ function Deal({ deal, offers, thread, onChange }) {
   );
 }
 
+/** What the company says about itself. Runway and data room are never sent to investors. */
+function Company({ name, company: c }) {
+  const facts = [
+    ['Contact', [c.contactName, c.contactRole].filter(Boolean).join(', ')],
+    ['Website', c.websiteUrl && <Website url={c.websiteUrl} />],
+    ['Founded', c.foundedYear],
+    ['Team size', c.teamSizeBand],
+    ['Raised so far', c.totalRaisedUsd != null && `${money(c.totalRaisedUsd)} USD`],
+  ].filter(([, value]) => value);
+  if (!c.summary && facts.length === 0) return null;
+  return (
+    <section aria-label={`About ${name}`}>
+      <h3 className="font-semibold">About {name}</h3>
+      {c.summary && <p className="max-w-prose whitespace-pre-wrap break-words">{c.summary}</p>}
+      <dl className="mt-1 grid max-w-md grid-cols-[auto_minmax(0,1fr)] gap-x-4 text-sm">
+        {facts.map(([label, value]) => (
+          <div key={label} className="contents"><dt className="text-soft">{label}</dt><dd className="break-words">{value}</dd></div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
 /** Your offers on this deal, then the two choices: make an offer, or pass with an optional reason. */
 function Decision({ deal, offers, onOffer, onChange }) {
   const [passing, setPassing] = useState(false);
   const [reason, setReason] = useState('');
   const [state, setState] = useState({ busy: false, error: null });
-  const live = offers.some((o) => o.status !== 'REJECTED');
+  const live = offers.some((o) => o.status !== 'REJECTED' && o.issuerDecision !== 'DECLINED');
   const passed = deal.investorDecision === 'PASSED';
 
   async function pass(event) {
@@ -118,7 +144,7 @@ function Decision({ deal, offers, onOffer, onChange }) {
         <ul className="divide-y divide-rule border-b border-rule text-sm">
           {offers.map((o) => (
             <li key={o.commitmentId} className="space-y-1 py-2">
-              <p className="flex items-center justify-between gap-2"><span className="font-mono">{money(o.amount)} {o.currency}</span><Status value={o.status} /></p>
+              <p className="flex flex-wrap items-center justify-between gap-2"><span className="font-mono">{money(o.amount)} {o.currency}</span><Status value={offerStatus(o)} /></p>
               <p className="break-words text-soft">{offerTerms(o)}</p>
             </li>
           ))}

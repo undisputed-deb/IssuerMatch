@@ -40,6 +40,8 @@ roles it had when it was issued, so a change shows up after the next sign-in.
 | Matched deals feed, own offers list | no | own | no | no |
 | Pass on a deal | no | own approved match | no | no |
 | Offers on a need: read | own need (rejected ones hidden) | no | all | all |
+| Accepted offer: accept or decline | own need | no | no | no |
+| Grant or remove a Verified badge | no | no | no | yes |
 | Deal questions: read | every thread on own need | own thread on matched needs | all | all |
 | Deal questions: ask | no | matched needs | no | no |
 | Deal questions: answer | own need | no | no | no |
@@ -57,10 +59,15 @@ An investor is "matched" to a need only when a match run for it is `APPROVED` an
 Pending and rejected runs show nothing. `MatchVisibility` holds this rule.
 
 ### What each side sees about the other
-- An investor sees the company name, the need and its own score, brief and questions. It does not see the analyst
-  explanation, the tool calls, its rank, other investors, their offers or their questions.
-- An issuer never sees the investor list or the ranking. It learns about an investor when that investor submits an offer
-  (firm, type, contact name and role, amount, terms, rationale) or asks a question (firm name).
+- An investor sees the company name, the need and its own score, brief and questions, plus the company card: Verified
+  badge, contact name and role, website, summary, founding year, team size and amount raised. It does not receive the
+  runway or the data room link, the analyst explanation, the tool calls, its rank, other investors, their offers or
+  their questions.
+- An issuer never sees the investor list or the ranking. It learns about an investor when that investor asks a question
+  (firm name) or submits an offer: firm, type, contact name and role, assets or revenue, deployable capital, website,
+  Verified badge, amount, terms and rationale. The thesis and mandates stay private.
+- Nobody can set a Verified badge on itself. The profile endpoints reject the field, the entities map the column read
+  only, and one admin endpoint writes it. Editing a profile keeps an existing badge.
 - Risk rule reasons go to staff. An investor receives the offer status without them.
 - Using someone else's `investorId` in an offer, or offering on an unmatched need, answers `404`.
 

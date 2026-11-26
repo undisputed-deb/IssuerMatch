@@ -32,6 +32,8 @@ import tools.jackson.databind.json.JsonMapper;
 public class MatchRunService {
 
     private static final Logger log = LoggerFactory.getLogger(MatchRunService.class);
+    /** How many investors a run keeps: the best by score. */
+    static final int MAX_RESULTS = 5;
 
     private final JdbcTemplate db;
     private final JsonMapper json;
@@ -91,6 +93,7 @@ public class MatchRunService {
                 .filter(s -> s.breakdown().qualified()) // a hard constraint always wins over the model's opinion
                 .sorted(Comparator.<Scored, BigDecimal>comparing(s -> s.breakdown().total()).reversed()
                         .thenComparing(s -> s.entry().investorId().toString())) // ties: stable and reproducible
+                .limit(MAX_RESULTS)
                 .toList();
         if (ranked.isEmpty()) {
             fail(runId, needId, "No qualified investors");

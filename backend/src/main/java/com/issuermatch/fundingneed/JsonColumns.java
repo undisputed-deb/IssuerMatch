@@ -6,13 +6,13 @@ import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
 
 /** JPA converters for the jsonb columns, using Jackson 3. They only ever read what this application wrote. */
-final class JsonColumns {
+public final class JsonColumns {
 
     private JsonColumns() {}
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
-    static final class UseOfFunds implements AttributeConverter<List<String>, String> {
+    public static final class StringList implements AttributeConverter<List<String>, String> {
         private static final TypeReference<List<String>> TYPE = new TypeReference<>() {};
 
         @Override

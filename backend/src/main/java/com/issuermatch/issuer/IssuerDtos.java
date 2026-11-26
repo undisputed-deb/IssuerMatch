@@ -2,6 +2,7 @@ package com.issuermatch.issuer;
 
 import com.issuermatch.common.Region;
 import com.issuermatch.common.Sector;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -15,16 +16,20 @@ final class IssuerDtos {
             @NotBlank @Size(max = 200) String name,
             @NotNull Sector sector,
             @NotNull Region region,
-            UUID ownerUserId) {} // optional: only an admin may name an owner other than themselves
+            UUID ownerUserId, // optional: only an admin may name an owner other than themselves
+            @Valid CompanyProfile profile) {}
 
     record UpdateRequest(
             @NotBlank @Size(max = 200) String name,
             @NotNull Sector sector,
-            @NotNull Region region) {}
+            @NotNull Region region,
+            @Valid CompanyProfile profile) {} // left out: the stored profile stays; given: it replaces the stored one
 
-    record Response(UUID id, String name, Sector sector, Region region, UUID ownerUserId, Instant createdAt) {
+    record Response(UUID id, String name, Sector sector, Region region, UUID ownerUserId, Instant createdAt,
+                    CompanyProfile profile, boolean verified) {
         static Response from(Issuer i) {
-            return new Response(i.getId(), i.getName(), i.getSector(), i.getRegion(), i.getOwnerUserId(), i.getCreatedAt());
+            return new Response(i.getId(), i.getName(), i.getSector(), i.getRegion(), i.getOwnerUserId(), i.getCreatedAt(),
+                    i.getProfile(), i.isVerified());
         }
     }
 }

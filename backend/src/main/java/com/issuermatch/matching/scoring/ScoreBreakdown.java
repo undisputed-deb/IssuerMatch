@@ -8,10 +8,12 @@ import java.util.List;
  * with any is never ranked, however many points it has.
  */
 public record ScoreBreakdown(BigDecimal mandateFit, BigDecimal ticketFit, BigDecimal regionFit, BigDecimal riskFit,
-                             BigDecimal trackRecord, BigDecimal thesisAlignment, List<String> disqualifiers) {
+                             BigDecimal trackRecord, BigDecimal thesisAlignment, BigDecimal stageFit,
+                             BigDecimal participationFit, List<String> disqualifiers) {
 
     public BigDecimal total() {
-        return mandateFit.add(ticketFit).add(regionFit).add(riskFit).add(trackRecord).add(thesisAlignment);
+        return mandateFit.add(ticketFit).add(regionFit).add(riskFit).add(trackRecord).add(thesisAlignment)
+                .add(stageFit).add(participationFit);
     }
 
     public boolean qualified() {

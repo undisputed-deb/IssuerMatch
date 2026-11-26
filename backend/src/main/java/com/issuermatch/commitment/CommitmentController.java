@@ -23,9 +23,11 @@ import org.springframework.web.bind.annotation.RestController;
 class CommitmentController {
 
     private final CommitmentService service;
+    private final IssuerDecisionService issuerDecisions;
 
-    CommitmentController(CommitmentService service) {
+    CommitmentController(CommitmentService service, IssuerDecisionService issuerDecisions) {
         this.service = service;
+        this.issuerDecisions = issuerDecisions;
     }
 
     /**
@@ -69,5 +71,19 @@ class CommitmentController {
     @PostMapping("/{id}/reject")
     Response reject(@PathVariable UUID id) {
         return service.review(id, false, CurrentUser.get().id());
+    }
+
+    /** The company raising the money takes an accepted offer. */
+    @PostMapping("/{id}/issuer-accept")
+    @PreAuthorize("hasRole('ISSUER')")
+    IssuerDecisionService.Decided issuerAccept(@PathVariable UUID id) {
+        return issuerDecisions.decide(id, true, CurrentUser.get().id());
+    }
+
+    /** The company turns an accepted offer down: its capacity is open again. */
+    @PostMapping("/{id}/issuer-decline")
+    @PreAuthorize("hasRole('ISSUER')")
+    IssuerDecisionService.Decided issuerDecline(@PathVariable UUID id) {
+        return issuerDecisions.decide(id, false, CurrentUser.get().id());
     }
 }

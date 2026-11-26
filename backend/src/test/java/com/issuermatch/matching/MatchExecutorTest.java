@@ -77,7 +77,7 @@ class MatchExecutorTest {
     }
 
     @Test
-    void atMostTenQualifiedInvestorsAndNeverADisqualifiedOne() {
+    void atMostFiveQualifiedInvestorsAndNeverADisqualifiedOne() {
         for (int i = 0; i < 14; i++) investor("Ex Many " + UUID.randomUUID(), "LOW");
         UUID excluded = investor("Ex Excluded " + UUID.randomUUID(), "LOW");
         db.update("UPDATE investors SET investor_type = 'VC' WHERE id = ?", excluded);
@@ -86,7 +86,7 @@ class MatchExecutorTest {
 
         MatchAgent.Result r = fallback.match(n);
 
-        assertThat(r.rankings()).hasSize(10).extracting(ModelOutput.Entry::investorId).doesNotContain(excluded);
+        assertThat(r.rankings()).hasSize(5).extracting(ModelOutput.Entry::investorId).doesNotContain(excluded);
     }
 
     @Test

@@ -19,8 +19,10 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class ModelOutput {
 
+    /** The prompt asks for 5 and MatchRunService keeps the best 5. Slightly more is trimmed there, not retried. */
     static final int MAX_RANKINGS = 10;
-    static final int MAX_EXPLANATION = 1500;
+    /** One or two sentences, with slack so a wordy answer does not cost a second model call. */
+    static final int MAX_EXPLANATION = 500;
     static final int MAX_BRIEF = 400;
     static final int MAX_BRIEF_SENTENCES = 2;
     static final int QUESTIONS = 3;
@@ -31,7 +33,8 @@ public final class ModelOutput {
     private static final Pattern SENTENCE_BREAK = Pattern.compile("(?<=[.!?])\\s+(?=[\\p{Lu}\\d\"“])");
     /** Questions go to the founder. These phrases only make sense aimed back at the investor who is asking. */
     private static final Pattern AIMED_AT_INVESTOR = Pattern.compile(
-            "\\byour (\\w+ )?(mandate|thesis|investment (thesis|criteria|strategy|committee|horizon|philosophy))\\b", Pattern.CASE_INSENSITIVE);
+            "\\b(your (\\w+ )?(mandate|thesis|investment (thesis|criteria|strategy|committee|horizon|philosophy))"
+                    + "|your (portfolio|fund)|our expansion|support our)\\b", Pattern.CASE_INSENSITIVE);
     /** Markup, links and script URLs have no place in model text: they are how model output attacks a browser. */
     private static final Pattern ACTIVE_CONTENT = Pattern.compile(
             "<[a-zA-Z/!?]|https?://|\\]\\(|javascript:|data:text|vbscript:|www\\.[a-z0-9-]+\\.[a-z]", Pattern.CASE_INSENSITIVE);

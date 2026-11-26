@@ -112,6 +112,7 @@ class CommitmentService {
             case BLOCK -> "REJECTED";
         };
         // ACCEPTED and PENDING_REVIEW both hold capacity (a flagged commitment must not be overtaken while it waits).
+        // An accepted offer the issuer later declines stops holding it (IssuerDecisionService).
         BigDecimal remaining = need.remaining();
         if (outcome.verdict() != Verdict.BLOCK) {
             remaining = takeCapacity(r.needId(), r.amount());
@@ -139,7 +140,7 @@ class CommitmentService {
                 .map(x -> new DecisionView(x.ruleId(), x.decision().verdict().name(), x.decision().reason())).toList();
         Response body = new Response(id, r.needId(), r.investorId(), r.amount(), status, remaining, views,
                 ((java.sql.Timestamp) created.get("created_at")).toInstant(), r.proposedStakePct(),
-                terms == null ? null : json.valueToTree(r.proposedTerms()), r.investmentRationale());
+                terms == null ? null : json.valueToTree(r.proposedTerms()), r.investmentRationale(), "PENDING");
 
         // Only a real decision is audited. A replay (same Idempotency-Key) never reaches this line.
         metrics.commitmentDecided(status);
@@ -218,14 +219,15 @@ class CommitmentService {
     @Transactional(readOnly = true)
     Response get(UUID id) {
         List<Response> rows = db.query("SELECT c.id, c.need_id, c.investor_id, c.amount, c.status, c.created_at,"
-                        + " n.remaining_capacity, c.proposed_stake_pct, c.proposed_terms_json::text AS terms, c.investment_rationale"
+                        + " n.remaining_capacity, c.proposed_stake_pct, c.proposed_terms_json::text AS terms, c.investment_rationale,"
+                        + " c.issuer_decision"
                         + " FROM commitments c JOIN funding_needs n ON n.id = c.need_id WHERE c.id = ?",
                 (rs, n) -> new Response(rs.getObject("id", UUID.class), rs.getObject("need_id", UUID.class),
                         rs.getObject("investor_id", UUID.class), rs.getBigDecimal("amount"), rs.getString("status"),
                         rs.getBigDecimal("remaining_capacity"), List.of(), rs.getTimestamp("created_at").toInstant(),
                         rs.getBigDecimal("proposed_stake_pct"),
                         rs.getString("terms") == null ? null : json.readTree(rs.getString("terms")),
-                        rs.getString("investment_rationale")), id);
+                        rs.getString("investment_rationale"), rs.getString("issuer_decision")), id);
         if (rows.isEmpty()) {
             throw new NotFoundException("Commitment not found");
         }
@@ -234,7 +236,8 @@ class CommitmentService {
                 "SELECT rule_id, verdict, reason FROM risk_decisions WHERE commitment_id = ? ORDER BY rule_id",
                 (rs, n) -> new DecisionView(rs.getString("rule_id"), rs.getString("verdict"), rs.getString("reason")), id);
         return new Response(r.id(), r.needId(), r.investorId(), r.amount(), r.status(), r.remainingCapacity(),
-                decisions, r.createdAt(), r.proposedStakePct(), r.proposedTerms(), r.investmentRationale());
+                decisions, r.createdAt(), r.proposedStakePct(), r.proposedTerms(), r.investmentRationale(),
+                r.issuerDecision());
     }
 
     // ---- helpers ----
@@ -282,6 +285,7 @@ class CommitmentService {
             // one total per currency, then converted: needs of one issuer may raise in different currencies
             return db.query("SELECT n.currency, sum(c.amount) AS total FROM commitments c JOIN funding_needs n ON n.id = c.need_id"
                             + " WHERE n.issuer_id = ? AND c.investor_id = ? AND c.status IN ('ACCEPTED','PENDING_REVIEW')"
+                            + " AND c.issuer_decision <> 'DECLINED'"
                             + " GROUP BY n.currency",
                     (rs, n) -> Currencies.toUsd(rs.getBigDecimal("total"), rs.getString("currency")), need.issuerId(), r.investorId())
                     .stream().reduce(BigDecimal.ZERO, BigDecimal::add);

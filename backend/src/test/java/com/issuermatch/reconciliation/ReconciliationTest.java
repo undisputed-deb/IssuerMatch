@@ -140,6 +140,35 @@ class ReconciliationTest {
         assertThat(typesForNeed(reconciliation.run(null), n)).containsExactly("UNEXPECTED_EVENT");
     }
 
+    void declinedByIssuer(UUID commitment) {
+        db.update("UPDATE commitments SET issuer_decision = 'DECLINED', issuer_decided_at = now() - interval '1 hour',"
+                + " issuer_decided_by = ? WHERE id = ?", UUID.randomUUID(), commitment);
+    }
+
+    @Test
+    void aDeclinedCommitmentHoldsNothingAndIsHealthyWithItsEvent() {
+        UUID n = need(1000); // the whole raise is open again
+        UUID c = healthyCommitment(n, 100);
+        declinedByIssuer(c);
+        event(c, n, 100, "DECLINED");
+        assertThat(typesForNeed(reconciliation.run(null), n)).isEmpty();
+    }
+
+    @Test
+    void catchesADeclineWhoseCapacityOrEventIsMissing() {
+        UUID n = need(900); // still shows 100 as taken
+        declinedByIssuer(healthyCommitment(n, 100));
+        assertThat(typesForNeed(reconciliation.run(null), n)).containsExactly("CAPACITY_MISMATCH", "MISSING_EVENT");
+    }
+
+    @Test
+    void catchesADeclinedEventForAnOfferNobodyDeclined() {
+        UUID n = need(900);
+        UUID c = healthyCommitment(n, 100);
+        event(c, n, 100, "DECLINED");
+        assertThat(typesForNeed(reconciliation.run(null), n)).containsExactly("UNEXPECTED_EVENT");
+    }
+
     @Test
     void catchesAnEventWithTheWrongAmount() {
         UUID n = need(900);

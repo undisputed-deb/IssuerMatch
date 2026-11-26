@@ -28,6 +28,9 @@ public class Investor {
     private String currency = "USD";
     private String longThesisDescription;
     private boolean profileCompleted;
+    @Enumerated(EnumType.STRING) private ParticipationRole participationRole;
+    @Enumerated(EnumType.STRING) private DeploymentStatus deploymentStatus = DeploymentStatus.ACTIVE;
+    @Column(insertable = false, updatable = false) private boolean verified; // written by VerificationService only
     @CreationTimestamp private Instant createdAt;
 
     // N+1 fix: load mandates for up to 100 investors in ONE query (WHERE investor_id IN (...)).
@@ -61,6 +64,10 @@ public class Investor {
         this.deployableCapitalUsd = p.deployableCapitalUsd();
         this.currency = p.currency();
         this.longThesisDescription = p.longThesisDescription();
+        this.participationRole = p.participationRole();
+        if (p.deploymentStatus() != null) {
+            this.deploymentStatus = p.deploymentStatus();
+        }
         this.profileCompleted = true;
     }
 
@@ -83,6 +90,9 @@ public class Investor {
     public String getCurrency() { return currency; }
     public String getLongThesisDescription() { return longThesisDescription; }
     public boolean isProfileCompleted() { return profileCompleted; }
+    public ParticipationRole getParticipationRole() { return participationRole; }
+    public DeploymentStatus getDeploymentStatus() { return deploymentStatus; }
+    public boolean isVerified() { return verified; }
     public Region getRegion() { return region; }
     public Instant getCreatedAt() { return createdAt; }
     public List<Mandate> getMandates() { return mandates; }

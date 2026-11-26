@@ -41,7 +41,7 @@ public class MatchingTools {
     public record InvestorHit(UUID investorId, String name, String investorType, String currency, BigDecimal minTicket,
                               BigDecimal maxTicket, String riskLevel, List<String> instruments) {}
 
-    @Tool(description = "Find investors that have a mandate for the given sector and region whose ticket range "
+    @Tool(description = "Find investors that are deploying capital and have a mandate for the given sector and region whose ticket range "
             + "contains the given ticket size in US dollars. Returns at most 20 investors, each with its matching mandate.")
     public List<InvestorHit> searchInvestorsByMandate(
             @ToolParam(description = "Funding need sector") Sector sector,
@@ -56,6 +56,7 @@ public class MatchingTools {
                         + " FROM mandates m JOIN investors i ON i.id = m.investor_id"
                         + " JOIN (VALUES " + Currencies.sqlRateValues() + ") AS fx(code, rate) ON fx.code = i.currency"
                         + " WHERE m.sector = ? AND m.region = ? AND m.min_ticket * fx.rate <= ? AND m.max_ticket * fx.rate >= ?"
+                        + " AND i.deployment_status = 'ACTIVE'"
                         + " ORDER BY i.name, m.min_ticket LIMIT 100",
                 (rs, n) -> new InvestorHit(rs.getObject("id", UUID.class), rs.getString("name"), rs.getString("investor_type"),
                         rs.getString("currency"), rs.getBigDecimal("min_ticket"), rs.getBigDecimal("max_ticket"),
@@ -78,7 +79,7 @@ public class MatchingTools {
                 .orElseThrow(() -> new IllegalArgumentException("Semantic search is not available for this need"));
         return db.query("SELECT id, name, 1 - (thesis_embedding <=> ?::vector) AS similarity,"
                         + " left(long_thesis_description, " + EXCERPT + ") AS excerpt FROM investors"
-                        + " WHERE thesis_embedding IS NOT NULL ORDER BY thesis_embedding <=> ?::vector LIMIT " + MAX_SEMANTIC,
+                        + " WHERE thesis_embedding IS NOT NULL AND deployment_status = 'ACTIVE' ORDER BY thesis_embedding <=> ?::vector LIMIT " + MAX_SEMANTIC,
                 (rs, n) -> new ThesisHit(rs.getObject("id", UUID.class), rs.getString("name"),
                         Math.round(rs.getDouble("similarity") * 1000) / 1000.0, MatchAgent.neutralise(rs.getString("excerpt"))),
                 vector, vector);

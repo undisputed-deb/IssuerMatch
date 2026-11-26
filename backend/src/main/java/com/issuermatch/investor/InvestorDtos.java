@@ -4,6 +4,7 @@ import com.issuermatch.common.Instrument;
 import com.issuermatch.common.Region;
 import com.issuermatch.common.RiskLevel;
 import com.issuermatch.common.Sector;
+import com.issuermatch.fundingneed.CompanyStage;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
@@ -36,6 +37,8 @@ public final class InvestorDtos {
             @NotNull @Positive @Digits(integer = 18, fraction = 2) BigDecimal deployableCapitalUsd,
             @NotNull @Pattern(regexp = com.issuermatch.common.Currencies.PATTERN, message = "unsupported currency (ISO 4217 code)") String currency,
             @NotBlank @Size(max = 10000) String longThesisDescription,
+            ParticipationRole participationRole, // optional
+            DeploymentStatus deploymentStatus, // left out: stays as it is, so an old client cannot un-pause a firm
             @NotEmpty @Size(max = 10) List<@NotNull @Valid MandateRequest> mandates) {}
 
     public record MandateRequest(
@@ -44,7 +47,8 @@ public final class InvestorDtos {
             @NotNull @DecimalMin("0.01") @Digits(integer = 16, fraction = 2) BigDecimal minTicket,
             @NotNull @Digits(integer = 16, fraction = 2) BigDecimal maxTicket,
             @NotNull RiskLevel riskLevel,
-            @NotEmpty @Size(max = 4) List<@NotNull Instrument> instruments) {
+            @NotEmpty @Size(max = 4) List<@NotNull Instrument> instruments,
+            @Size(max = 6) List<@NotNull CompanyStage> targetStages) {
 
         @AssertTrue(message = "maxTicket must be >= minTicket")
         boolean isTicketRangeValid() {
@@ -54,20 +58,25 @@ public final class InvestorDtos {
         List<String> instrumentNames() {
             return instruments.stream().map(Enum::name).distinct().toList();
         }
+
+        List<String> stageNames() {
+            return targetStages == null ? List.of() : targetStages.stream().map(Enum::name).distinct().toList();
+        }
     }
 
     record MandateResponse(UUID id, Sector sector, Region region, BigDecimal minTicket, BigDecimal maxTicket,
-                           RiskLevel riskLevel, List<String> instruments) {
+                           RiskLevel riskLevel, List<String> instruments, List<String> targetStages) {
         static MandateResponse from(Mandate m) {
             return new MandateResponse(m.getId(), m.getSector(), m.getRegion(), m.getMinTicket(), m.getMaxTicket(),
-                    m.getRiskLevel(), m.getInstruments());
+                    m.getRiskLevel(), m.getInstruments(), m.getTargetStages());
         }
     }
 
     record InvestorResponse(UUID id, String name, InvestorType investorType, Region region, Instant createdAt,
                             List<MandateResponse> mandates, boolean profileCompleted, String contactName, String roleTitle,
                             String companyName, String websiteUrl, BigDecimal aumOrRevenueUsd, BigDecimal deployableCapitalUsd,
-                            String currency, String longThesisDescription) {
+                            String currency, String longThesisDescription, ParticipationRole participationRole,
+                            DeploymentStatus deploymentStatus, boolean verified) {
         static InvestorResponse from(Investor i) {
             return from(i, i.getMandates());
         }
@@ -76,7 +85,8 @@ public final class InvestorDtos {
             return new InvestorResponse(i.getId(), i.getName(), i.getInvestorType(), i.getRegion(), i.getCreatedAt(),
                     mandates.stream().map(MandateResponse::from).toList(), i.isProfileCompleted(), i.getContactName(),
                     i.getRoleTitle(), i.getCompanyName(), i.getWebsiteUrl(), i.getAumOrRevenueUsd(), i.getDeployableCapitalUsd(),
-                    i.getCurrency(), i.getLongThesisDescription());
+                    i.getCurrency(), i.getLongThesisDescription(), i.getParticipationRole(), i.getDeploymentStatus(),
+                    i.isVerified());
         }
     }
 }

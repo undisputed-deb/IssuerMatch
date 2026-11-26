@@ -21,7 +21,6 @@ import org.springframework.stereotype.Component;
 class DeterministicMatcher {
 
     private static final int MAX_CANDIDATES = 300;
-    private static final int MAX_RESULTS = 10;
 
     private static final Map<String, List<String>> QUESTIONS = Map.of(
             "EQUITY", List.of("What is current annual recurring revenue and how fast did it grow in the last year?",
@@ -55,14 +54,15 @@ class DeterministicMatcher {
                         (rs, n) -> new Need(rs.getString("title"), rs.getString("sector"), rs.getString("region"),
                                 rs.getBigDecimal("amount"), rs.getString("currency"), rs.getString("instrument")), needId)
                 .stream().findFirst().orElseThrow(() -> new AgentFailure("Funding need not found"));
-        List<UUID> candidates = db.queryForList("SELECT DISTINCT investor_id FROM mandates WHERE sector = ? LIMIT " + MAX_CANDIDATES,
+        List<UUID> candidates = db.queryForList("SELECT DISTINCT m.investor_id FROM mandates m JOIN investors i ON i.id = m.investor_id"
+                        + " WHERE m.sector = ? AND i.deployment_status = 'ACTIVE' LIMIT " + MAX_CANDIDATES,
                 UUID.class, need.sector());
         List<ModelOutput.Entry> entries = candidates.stream()
                 .map(id -> new Scored(id, scoring.score(needId, id)))
                 .filter(s -> s.score().qualified())
                 .sorted(Comparator.<Scored, BigDecimal>comparing(s -> s.score().total()).reversed()
                         .thenComparing(s -> s.investorId().toString()))
-                .limit(MAX_RESULTS)
+                .limit(MatchRunService.MAX_RESULTS)
                 .map(s -> entry(need, s))
                 .toList();
         if (entries.isEmpty()) {
@@ -75,9 +75,10 @@ class DeterministicMatcher {
     private static ModelOutput.Entry entry(Need need, Scored s) {
         ScoreBreakdown b = s.score();
         String explanation = "Scored " + b.total().toPlainString() + " of 100 without the language model: mandate "
-                + b.mandateFit().toPlainString() + "/25, ticket " + b.ticketFit().toPlainString() + "/25, region "
-                + b.regionFit().toPlainString() + "/15, risk " + b.riskFit().toPlainString() + "/10, track record "
-                + b.trackRecord().toPlainString() + "/10, thesis " + b.thesisAlignment().toPlainString() + "/15.";
+                + b.mandateFit().toPlainString() + "/25, ticket " + b.ticketFit().toPlainString() + "/20, region "
+                + b.regionFit().toPlainString() + "/10, risk " + b.riskFit().toPlainString() + "/10, track record "
+                + b.trackRecord().toPlainString() + "/10, thesis " + b.thesisAlignment().toPlainString() + "/10, stage "
+                + b.stageFit().toPlainString() + "/10, participation " + b.participationFit().toPlainString() + "/5.";
         String brief = "“" + need.title() + "” is raising " + need.amount().toPlainString() + " " + need.currency() + " of "
                 + need.instrument().toLowerCase() + " (" + words(need.sector()) + ", " + words(need.region()) + ") and scores "
                 + b.total().toPlainString() + " of 100 against your mandate. This summary was generated automatically.";

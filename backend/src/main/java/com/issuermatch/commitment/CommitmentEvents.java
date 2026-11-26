@@ -35,6 +35,10 @@ class CommitmentEvents {
         publish(Topics.COMMITMENT_REJECTED, "CommitmentRejected", f, reason);
     }
 
+    void declined(Facts f) {
+        publish(Topics.COMMITMENT_DECLINED, "CommitmentDeclined", f, "Declined by the issuer");
+    }
+
     private void publish(String topic, String type, Facts f, String reason) {
         Map<String, Object> payload = new HashMap<>();
         payload.put("commitmentId", f.commitmentId().toString());

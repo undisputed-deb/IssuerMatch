@@ -38,7 +38,11 @@ class E2eCleanupSqlTest {
         UUID testIssuer = issuer("E2E Co 1");
         UUID testInvestor = investor("E2E Fund 1");
         UUID testNeed = need(testIssuer, "E2E deal 1", 950);
+        UUID declined = commitment(realNeed, investor("E2E Fund declined"), 40); // declined: holds nothing to give back
+        db.update("UPDATE commitments SET issuer_decision = 'DECLINED', issuer_decided_at = now(), issuer_decided_by = ? WHERE id = ?",
+                UUID.randomUUID(), declined);
         UUID testNeedOnRealIssuer = need(realIssuer, "E2E browser 1", 1000);
+        UUID oldBrowserTestNeed = need(realIssuer, "Browser test 17", 1000);
 
         UUID keptCommitment = commitment(realNeed, realInvestor, 100);
         commitment(realNeed, testInvestor, 200);
@@ -58,10 +62,12 @@ class E2eCleanupSqlTest {
         assertThat(count("issuers", "id", testIssuer)).isZero();
         assertThat(count("funding_needs", "id", testNeed)).isZero();
         assertThat(count("funding_needs", "id", testNeedOnRealIssuer)).isZero();
+        assertThat(count("funding_needs", "id", oldBrowserTestNeed)).isZero();
         assertThat(count("commitments", "investor_id", testInvestor)).isZero();
         assertThat(count("commitment_events", "investor_id", testInvestor)).isZero();
         assertThat(count("match_results", "investor_id", testInvestor)).isZero();
         assertThat(count("deal_questions", "investor_id", testInvestor)).isZero();
+        assertThat(count("commitments", "id", declined)).isZero();
 
         assertThat(count("issuers", "id", realIssuer)).isOne();
         assertThat(count("commitments", "id", keptCommitment)).isOne();

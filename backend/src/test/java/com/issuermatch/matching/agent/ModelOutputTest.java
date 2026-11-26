@@ -100,7 +100,7 @@ class ModelOutputTest {
     @Test
     void rejectsBlankOrHugeExplanationsAndBadIds() {
         assertThatThrownBy(() -> parse(answer(inv.toString(), "   ", "[\"scoreFit\"]"), goodCalls())).isInstanceOf(ModelOutput.Invalid.class);
-        assertThatThrownBy(() -> parse(answer(inv.toString(), "x".repeat(1501), "[\"scoreFit\"]"), goodCalls())).isInstanceOf(ModelOutput.Invalid.class);
+        assertThatThrownBy(() -> parse(answer(inv.toString(), "x".repeat(501), "[\"scoreFit\"]"), goodCalls())).isInstanceOf(ModelOutput.Invalid.class);
         assertThatThrownBy(() -> parse(answer("not-a-uuid", "x", "[\"scoreFit\"]"), goodCalls())).isInstanceOf(ModelOutput.Invalid.class);
     }
 
@@ -165,11 +165,15 @@ class ModelOutputTest {
     @Test
     void questionsAimedBackAtTheInvestorAreRejected() {
         for (String inverted : new String[] {"How flexible is your investment thesis?", "Does this fit your mandate?",
-                "What is your typical investment horizon?"}) {
+                "What is your typical investment horizon?", "How diversified is your portfolio?", "What size is your fund?",
+                "How would you help with our expansion?", "How do you support our growth?"}) {
             assertThatThrownBy(() -> parse(custom("\"ok\"", "[\"" + inverted + "\",\"b?\",\"c?\"]"), goodCalls()))
                     .as(inverted).isInstanceOf(ModelOutput.Invalid.class).hasMessageContaining("founder");
         }
-        assertThat(parse(custom("\"ok\"", "[\"How concentrated is your loan portfolio?\",\"b?\",\"c?\"]"), goodCalls())).hasSize(1);
+        for (String fine : new String[] {"How concentrated is your loan portfolio?", "How long does your funding last?",
+                "Which customers support your revenue?"}) {
+            assertThat(parse(custom("\"ok\"", "[\"" + fine + "\",\"b?\",\"c?\"]"), goodCalls())).as(fine).hasSize(1);
+        }
     }
 
     @Test
@@ -180,7 +184,9 @@ class ModelOutputTest {
                 .contains("exactly 3 questions of at most 20 words")
                 .contains("revenue durability", "customer concentration", "licensing or regulatory risk", "burn and runway",
                         "valuation assumptions")
-                .contains("dealBrief is exactly 2 sentences");
+                .contains("dealBrief is exactly 2 sentences")
+                .contains("1-2 crisp sentences")
+                .contains("Rank only the 5 best qualified investors");
     }
 
     @Test

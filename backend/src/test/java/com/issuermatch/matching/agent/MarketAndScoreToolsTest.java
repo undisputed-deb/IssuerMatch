@@ -56,8 +56,9 @@ class MarketAndScoreToolsTest {
         UUID perfect = investorWithMandates("FINTECH,EUROPE,500000,2000000,MEDIUM");
         MatchingTools.FitResult r = one(need, perfect);
         assertThat(r.error()).isNull();
-        assertThat(r.total().doubleValue()).isEqualTo(75.0); // no past deals and no thesis: those 25 points are not earned
-        assertThat(r.breakdown().ticketFit().doubleValue()).isEqualTo(25.0);
+        // no past deals and no thesis: those 20 points are not earned. Stage and role unsaid: half of 10 and of 5
+        assertThat(r.total().doubleValue()).isEqualTo(72.5);
+        assertThat(r.breakdown().ticketFit().doubleValue()).isEqualTo(20.0);
         assertThat(r.breakdown().disqualifiers()).isEmpty();
     }
 
@@ -76,9 +77,9 @@ class MarketAndScoreToolsTest {
         UUID need = need(); // raises 1,000,000 USD
         UUID inv = investorWithMandates("FINTECH,EUROPE,900000,950000,MEDIUM");
         assertThat(one(need, inv)).isEqualTo(one(need, inv));
-        assertThat(one(need, inv).breakdown().ticketFit().doubleValue()).isLessThan(25.0); // 950k USD is below the raise
+        assertThat(one(need, inv).breakdown().ticketFit().doubleValue()).isLessThan(20.0); // 950k USD is below the raise
         db.update("UPDATE investors SET currency = 'EUR' WHERE id = ?", inv);              // 972k to 1.026M USD now covers it
-        assertThat(one(need, inv).breakdown().ticketFit().doubleValue()).isEqualTo(25.0);
+        assertThat(one(need, inv).breakdown().ticketFit().doubleValue()).isEqualTo(20.0);
     }
 
     @Test

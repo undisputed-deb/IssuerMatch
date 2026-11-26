@@ -51,14 +51,18 @@ public class ReconciliationService {
         db.update(into + "SELECT ?, 'CAPACITY_MISMATCH', n.id, NULL, format('amount %s minus remaining %s is %s, but live commitments hold %s',"
                 + " n.amount, n.remaining_capacity, n.amount - n.remaining_capacity, coalesce(s.held, 0))"
                 + " FROM funding_needs n LEFT JOIN (SELECT need_id, sum(amount) AS held FROM commitments"
-                + " WHERE status IN ('ACCEPTED','PENDING_REVIEW') GROUP BY need_id) s ON s.need_id = n.id"
+                + " WHERE status IN ('ACCEPTED','PENDING_REVIEW') AND issuer_decision <> 'DECLINED' GROUP BY need_id) s"
+                + " ON s.need_id = n.id"
                 + " WHERE n.amount - n.remaining_capacity <> coalesce(s.held, 0)", run);
 
-        // 2. Missing events: every commitment needs REQUESTED, plus ACCEPTED or REJECTED once it is decided.
+        // 2. Missing events: every commitment needs REQUESTED, plus ACCEPTED or REJECTED once it is decided, plus
+        // DECLINED if the issuer turned it down. Each is overdue counted from the change that should have sent it.
         db.update(into + "SELECT ?, 'MISSING_EVENT', c.need_id, c.id, format('no %s event for a %s commitment', e.type, c.status)"
-                + " FROM commitments c CROSS JOIN LATERAL (VALUES ('REQUESTED'),"
-                + " (CASE c.status WHEN 'ACCEPTED' THEN 'ACCEPTED' WHEN 'REJECTED' THEN 'REJECTED' END)) AS e(type)"
-                + " WHERE e.type IS NOT NULL AND coalesce(c.reviewed_at, c.created_at) < now() - make_interval(secs => ?)"
+                + " FROM commitments c CROSS JOIN LATERAL (VALUES ('REQUESTED', coalesce(c.reviewed_at, c.created_at)),"
+                + " (CASE c.status WHEN 'ACCEPTED' THEN 'ACCEPTED' WHEN 'REJECTED' THEN 'REJECTED' END,"
+                + " coalesce(c.reviewed_at, c.created_at)),"
+                + " (CASE c.issuer_decision WHEN 'DECLINED' THEN 'DECLINED' END, c.issuer_decided_at)) AS e(type, since)"
+                + " WHERE e.type IS NOT NULL AND e.since < now() - make_interval(secs => ?)"
                 + " AND NOT EXISTS (SELECT 1 FROM commitment_events ev WHERE ev.commitment_id = c.id AND ev.type = e.type)",
                 run, grace.toSeconds());
 
@@ -72,7 +76,8 @@ public class ReconciliationService {
                 + " ELSE format('%s event but the commitment is %s', ev.type, c.status) END"
                 + " FROM commitment_events ev LEFT JOIN commitments c ON c.id = ev.commitment_id"
                 + " WHERE c.id IS NULL OR (ev.type = 'ACCEPTED' AND c.status <> 'ACCEPTED')"
-                + " OR (ev.type = 'REJECTED' AND c.status <> 'REJECTED')", run);
+                + " OR (ev.type = 'REJECTED' AND c.status <> 'REJECTED')"
+                + " OR (ev.type = 'DECLINED' AND c.issuer_decision <> 'DECLINED')", run);
 
         // 5. Events whose money does not match the commitment.
         db.update(into + "SELECT DISTINCT ?::uuid, 'AMOUNT_MISMATCH', c.need_id, c.id, format('%s event says %s, commitment says %s',"

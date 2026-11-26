@@ -22,7 +22,12 @@ class InvestorFeed {
                 String sector, String region, BigDecimal amount, String currency, String instrument, String companyStage,
                 LocalDate targetCloseDate, JsonNode useOfFunds, JsonNode instrumentTerms, BigDecimal minTicketSize,
                 BigDecimal remainingCapacity, BigDecimal score, JsonNode scoreBreakdown, String dealBrief,
-                JsonNode suggestedDiligenceQuestions, Instant approvedAt, String investorDecision, String passReason) {}
+                JsonNode suggestedDiligenceQuestions, Instant approvedAt, String investorDecision, String passReason,
+                Company company) {}
+
+    /** The company profile an approved investor may read. Runway and the data room stay with the company and staff. */
+    record Company(boolean verified, String contactName, String contactRole, String websiteUrl, String summary,
+                   Integer foundedYear, String teamSizeBand, BigDecimal totalRaisedUsd) {}
 
     private final JdbcTemplate db;
     private final JsonMapper json;
@@ -39,7 +44,8 @@ class InvestorFeed {
                         + " n.target_close_date, n.use_of_funds::text AS use_of_funds, n.instrument_terms::text AS terms,"
                         + " n.min_ticket_size, n.remaining_capacity, r.score, r.score_breakdown::text AS breakdown, r.deal_brief,"
                         + " r.suggested_diligence_questions::text AS questions, m.reviewed_at, r.investor_decision,"
-                        + " r.pass_reason"
+                        + " r.pass_reason, s.verified, s.contact_name, s.contact_role, s.website_url, s.company_summary,"
+                        + " s.founded_year, s.team_size_band, s.total_raised_usd"
                         + " FROM match_results r JOIN match_runs m ON m.id = r.run_id JOIN funding_needs n ON n.id = m.need_id"
                         + " JOIN issuers s ON s.id = n.issuer_id JOIN investors i ON i.id = r.investor_id"
                         + " WHERE m.status = 'APPROVED' AND i.owner_user_id = ?"
@@ -53,7 +59,11 @@ class InvestorFeed {
                         rs.getBigDecimal("score"), tree(rs.getString("breakdown")), rs.getString("deal_brief"),
                         tree(rs.getString("questions")),
                         rs.getTimestamp("reviewed_at") == null ? null : rs.getTimestamp("reviewed_at").toInstant(),
-                        rs.getString("investor_decision"), rs.getString("pass_reason")), userId);
+                        rs.getString("investor_decision"), rs.getString("pass_reason"),
+                        new Company(rs.getBoolean("verified"), rs.getString("contact_name"), rs.getString("contact_role"),
+                                rs.getString("website_url"), rs.getString("company_summary"),
+                                (Integer) rs.getObject("founded_year"), rs.getString("team_size_band"),
+                                rs.getBigDecimal("total_raised_usd"))), userId);
         return deals.stream().sorted(Comparator.comparing(Deal::approvedAt, Comparator.nullsLast(Comparator.reverseOrder()))).toList();
     }
 

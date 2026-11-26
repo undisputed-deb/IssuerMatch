@@ -101,6 +101,7 @@ async function request(path, { method = 'GET', body, headers = {}, decision } = 
 export const api = {
   issuers: () => request('/issuers?size=100&sort=name,asc'),
   createIssuer: (company) => request('/issuers', { method: 'POST', body: company }),
+  updateIssuer: (id, company) => request(`/issuers/${id}`, { method: 'PUT', body: company }),
   myProfile: () => request('/investors/me'),
   saveProfile: (profile) => request('/investors/me', { method: 'PUT', body: profile }),
   commitments: (status) => request(`/commitments?size=50&status=${status}`),
@@ -122,6 +123,8 @@ export const api = {
     request('/commitments', { method: 'POST', body: offer, headers: { 'Idempotency-Key': key }, decision: (d) => d?.status === 'REJECTED' }),
   pass: (matchResultId, reason) => request(`/investor/matches/${matchResultId}/pass`, { method: 'POST', body: { reason } }),
   offers: (needId) => request(`/funding-needs/${needId}/offers`),
+  decideOffer: (commitmentId, accept) =>
+    request(`/commitments/${commitmentId}/issuer-${accept ? 'accept' : 'decline'}`, { method: 'POST' }),
   questions: (needId) => request(`/funding-needs/${needId}/questions`),
   ask: (needId, question) => request(`/funding-needs/${needId}/questions`, { method: 'POST', body: { question } }),
   answer: (needId, id, answer) => request(`/funding-needs/${needId}/questions/${id}/answer`, { method: 'POST', body: { answer } }),

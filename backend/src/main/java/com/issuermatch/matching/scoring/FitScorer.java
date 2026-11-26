@@ -1,5 +1,6 @@
 package com.issuermatch.matching.scoring;
 
+import com.issuermatch.investor.ParticipationRole;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
@@ -11,32 +12,38 @@ import java.util.List;
  *
  * <pre>
  * soft preferences (points, 0..100 in total)
- *   mandateFit       25   sector 20 + instrument offered 5
- *   ticketFit        25   mandate range overlaps what the issuer can accept (else 25 x closeness)
- *   regionFit        15
- *   riskFit          10   same level 10, one step apart 5
- *   trackRecord      10   4 per past deal in the sector, 2 per past deal in the region, capped
- *   thesisAlignment  15   15 x cosine similarity of thesis and need
- * hard constraints (disqualify, set by the issuer)
- *   excluded type, region not allowed, instrument or region mandate required, minimum deployable capital,
- *   and: no mandate can write the smallest ticket the issuer accepts
+ *   mandateFit        25   sector 20 + instrument offered 5
+ *   ticketFit         20   mandate range overlaps what the issuer can accept (else 20 x closeness)
+ *   regionFit         10
+ *   riskFit           10   same level 10, one step apart 5
+ *   trackRecord       10   4 per past deal in the sector, 2 per past deal in the region, capped
+ *   thesisAlignment   10   10 x cosine similarity of thesis and need
+ *   stageFit          10   mandate targets the company's stage 10, either side silent 5, other stages only 0
+ *   participationFit   5   see participationPoints
+ * disqualifiers
+ *   the investor paused deployment; or a hard constraint of the issuer: excluded type, region not allowed, instrument
+ *   or region mandate required, minimum deployable capital, no mandate can write the smallest ticket accepted
  * </pre>
- * The four mandate-level criteria come from the investor's single best mandate.
+ * The mandate-level criteria, stage included, come from the investor's single best mandate.
  */
 public final class FitScorer {
 
     private static final BigDecimal SECTOR = points(20);
     private static final BigDecimal INSTRUMENT = points(5);
-    private static final BigDecimal TICKET = points(25);
-    private static final BigDecimal REGION = points(15);
+    private static final BigDecimal TICKET = points(20);
+    private static final BigDecimal REGION = points(10);
     private static final BigDecimal RISK_SAME = points(10);
     private static final BigDecimal RISK_ADJACENT = points(5);
     private static final int TRACK_CAP = 10;
-    private static final BigDecimal THESIS = points(15);
+    private static final BigDecimal THESIS = points(10);
+    private static final BigDecimal STAGE = points(10);
+    private static final BigDecimal STAGE_UNKNOWN = points(5);
+    private static final BigDecimal PARTICIPATION = points(5);
+    private static final BigDecimal PARTICIPATION_HALF = new BigDecimal("2.50");
 
-    private record MandateScore(BigDecimal mandate, BigDecimal ticket, BigDecimal region, BigDecimal risk) {
+    private record MandateScore(BigDecimal mandate, BigDecimal ticket, BigDecimal region, BigDecimal risk, BigDecimal stage) {
         BigDecimal sum() {
-            return mandate.add(ticket).add(region).add(risk);
+            return mandate.add(ticket).add(region).add(risk).add(stage);
         }
     }
 
@@ -45,12 +52,12 @@ public final class FitScorer {
     public static ScoreBreakdown score(NeedProfile need, InvestorFacts investor) {
         MandateScore best = investor.mandates().stream().map(m -> scoreMandate(need, m))
                 .max(Comparator.comparing(MandateScore::sum).thenComparing(MandateScore::ticket).thenComparing(MandateScore::risk))
-                .orElse(new MandateScore(points(0), points(0), points(0), points(0)));
+                .orElse(new MandateScore(points(0), points(0), points(0), points(0), points(0)));
         int track = Math.min(TRACK_CAP, 4 * investor.sectorDeals() + 2 * investor.regionDeals());
         double similarity = investor.thesisSimilarity() == null ? 0 : Math.clamp(investor.thesisSimilarity(), 0, 1);
         BigDecimal thesis = THESIS.multiply(BigDecimal.valueOf(similarity)).setScale(2, RoundingMode.HALF_UP);
         return new ScoreBreakdown(best.mandate(), best.ticket(), best.region(), best.risk(), points(track), thesis,
-                disqualifiers(need, investor));
+                best.stage(), participationPoints(need, investor.participation()), disqualifiers(need, investor));
     }
 
     private static MandateScore scoreMandate(NeedProfile need, MandateProfile m) {
@@ -58,7 +65,32 @@ public final class FitScorer {
                 .add(m.instruments().contains(need.instrument().name()) ? INSTRUMENT : points(0));
         int gap = Math.abs(need.riskLevel().ordinal() - m.riskLevel().ordinal());
         return new MandateScore(mandate, ticketPoints(need, m), need.region() == m.region() ? REGION : points(0),
-                gap == 0 ? RISK_SAME : gap == 1 ? RISK_ADJACENT : points(0));
+                gap == 0 ? RISK_SAME : gap == 1 ? RISK_ADJACENT : points(0), stagePoints(need, m));
+    }
+
+    private static BigDecimal stagePoints(NeedProfile need, MandateProfile m) {
+        if (need.stage() == null || m.targetStages().isEmpty()) {
+            return STAGE_UNKNOWN;
+        }
+        return m.targetStages().contains(need.stage().name()) ? STAGE : points(0);
+    }
+
+    /**
+     * A raise that accepts no smaller ticket wants one investor to take it, which is a lead's job: lead 5, co-lead 2.5,
+     * follow-on 0. A raise open to smaller tickets has room for every role: 5. An investor that did not say: 2.5.
+     */
+    private static BigDecimal participationPoints(NeedProfile need, ParticipationRole role) {
+        if (role == null) {
+            return PARTICIPATION_HALF;
+        }
+        if (need.minTicketUsd() != null && need.minTicketUsd().compareTo(need.amountUsd()) < 0) {
+            return PARTICIPATION;
+        }
+        return switch (role) {
+            case LEAD -> PARTICIPATION;
+            case CO_LEAD -> PARTICIPATION_HALF;
+            case FOLLOW_ON -> points(0);
+        };
     }
 
     /** Full points when the mandate range overlaps [smallest accepted ticket, whole amount]. */
@@ -77,6 +109,9 @@ public final class FitScorer {
     private static List<String> disqualifiers(NeedProfile need, InvestorFacts investor) {
         var c = need.constraints();
         List<String> out = new ArrayList<>();
+        if (investor.paused()) {
+            out.add("investor has paused deployment");
+        }
         if (c.excludedInvestorTypes() != null && c.excludedInvestorTypes().contains(investor.type())) {
             out.add("investor type " + investor.type() + " is excluded by the issuer");
         }

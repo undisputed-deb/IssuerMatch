@@ -40,7 +40,7 @@ text that reaches the language model (issuers in funding needs, investors in the
 | LLM05 Improper output handling | Yes | Strict JSON schema, investors must come from this run's search, explanations with markup or links are rejected, the UI renders plain text. |
 | LLM06 Excessive agency | Yes | Five read-only tools, 12-call budget, one deadline, no write path, human approval. |
 | LLM07 System prompt leakage | Low | The prompt holds no secrets, so leaking it gives an attacker nothing. |
-| LLM08 Vector and embedding weaknesses | Yes | Investors write the text that gets embedded. The search returns it marked untrusted, injection patterns flag the run, and similarity adds at most 15 of 100 points. |
+| LLM08 Vector and embedding weaknesses | Yes | Investors write the text that gets embedded. The search returns it marked untrusted, injection patterns flag the run, and similarity adds at most 10 of 100 points. |
 | LLM09 Misinformation | Yes | Scores come from Java. Every explanation cites tool calls that the reviewer can open. |
 | LLM10 Unbounded consumption | Yes | Rate limits on the endpoints that start a model call, timeout, circuit breaker and a daily token budget. |
 

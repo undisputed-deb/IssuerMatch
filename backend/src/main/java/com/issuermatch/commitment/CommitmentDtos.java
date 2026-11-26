@@ -61,7 +61,8 @@ final class CommitmentDtos {
      */
     record Response(UUID id, UUID needId, UUID investorId, BigDecimal amount, String status,
                     BigDecimal remainingCapacity, List<DecisionView> decisions, Instant createdAt,
-                    BigDecimal proposedStakePct, JsonNode proposedTerms, String investmentRationale) {}
+                    BigDecimal proposedStakePct, JsonNode proposedTerms, String investmentRationale,
+                    String issuerDecision) {}
 
     enum Status {
         ACCEPTED, PENDING_REVIEW, REJECTED

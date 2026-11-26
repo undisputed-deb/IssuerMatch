@@ -31,7 +31,7 @@ I label the run so the reviewer knows no model wrote the text.
 
 **Thesis search** (`matching/embedding`, `FitScorer`).
 Investors describe their thesis in free text, which I embed into 768 numbers and search with pgvector.
-Similarity is worth 15 of 100 points, next to mandate, ticket, region, risk and track record.
+Similarity is worth 10 of 100 points, next to mandate, ticket, region, risk, track record, company stage and lead role.
 Hard constraints such as excluded investor types disqualify outright, because a good score must not override a deal breaker.
 
 **Two-sided visibility** (`MatchVisibility`, `DealService`).
@@ -43,6 +43,11 @@ I broke two of those checks on purpose and the tests caught both.
 An offer is a commitment with stake, terms and a rationale, sent to the same endpoint staff use.
 That keeps one path for idempotency, locks, risk rules, events and reconciliation.
 The idempotency hash covers the new fields, and requests without them hash as before, so old keys still replay.
+
+**Closing the offer loop** (`IssuerDecisionService`).
+The issuer accepts or declines an offer that already passed the risk rules, through one conditional update.
+The risk status stays `ACCEPTED` and the answer lives in its own column, so I can tell a risk rejection from a company's
+no. Every query that counts held money had to learn about declined offers, and reconciliation tests catch a missed one.
 
 **Public signup** (`signup/`).
 The server creates the Supabase user and sets the role itself, and accepts two role strings.
@@ -127,7 +132,7 @@ The backlog fell from 105,334 to 439, while request latency rose a little.
 18. **What happens if an investor passes and offers at the same moment?** Both lock the investor row, so one runs first. A live offer blocks a pass; an offer after a pass replaces the decision.
 
 ## Resume bullets (measured numbers only)
-- Built a two-sided capital-matching platform (Java 21, Spring Boot, Kafka, Spring AI, pgvector, React) with 4 roles, 49 REST endpoints and 356 integration and unit tests at 94.4% line coverage.
+- Built a two-sided capital-matching platform (Java 21, Spring Boot, Kafka, Spring AI, pgvector, React) with 4 roles, 53 REST endpoints and 376 integration and unit tests at 94.6% line coverage.
 - Designed a retry-safe commitment API with idempotency keys, row locking and a runtime-tunable risk engine, sustaining about 620 requests/s at p95 133 ms with zero errors in a single-laptop load test.
 - Found and fixed an event-publishing bottleneck through load testing, cutting the post-load backlog from 105,334 events to 439.
 - Combined semantic thesis search with deterministic scoring and a fallback matcher, so a model outage still yields a reviewable ranking.

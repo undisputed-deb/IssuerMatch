@@ -54,28 +54,33 @@ class DealService {
             requireOwner(needId, me.id());
         }
         // ponytail: newest 200, add paging when a raise ever gets more offers than that
+        // the investor columns listed here are everything a company learns about a firm that offers
         return db.query("SELECT c.id, c.investor_id, i.name, i.investor_type, i.contact_name, i.role_title, c.amount, n.currency,"
-                        + " c.status, c.proposed_stake_pct, c.proposed_terms_json::text AS terms, c.investment_rationale, c.created_at"
+                        + " c.status, c.proposed_stake_pct, c.proposed_terms_json::text AS terms, c.investment_rationale, c.created_at,"
+                        + " c.issuer_decision, i.aum_or_revenue_usd, i.deployable_capital_usd, i.website_url, i.verified"
                         + " FROM commitments c JOIN investors i ON i.id = c.investor_id JOIN funding_needs n ON n.id = c.need_id"
                         + " WHERE c.need_id = ? AND (? OR c.status <> 'REJECTED') ORDER BY c.created_at DESC LIMIT 200",
                 (rs, k) -> new DealDtos.Offer(uuid(rs, "id"), uuid(rs, "investor_id"), rs.getString("name"),
                         rs.getString("investor_type"), rs.getString("contact_name"), rs.getString("role_title"),
                         rs.getBigDecimal("amount"), rs.getString("currency"), rs.getString("status"),
                         rs.getBigDecimal("proposed_stake_pct"), tree(rs.getString("terms")),
-                        rs.getString("investment_rationale"), instant(rs, "created_at")),
+                        rs.getString("investment_rationale"), instant(rs, "created_at"), rs.getString("issuer_decision"),
+                        rs.getBigDecimal("aum_or_revenue_usd"), rs.getBigDecimal("deployable_capital_usd"),
+                        rs.getString("website_url"), rs.getBoolean("verified")),
                 needId, me.isStaff());
     }
 
     @Transactional(readOnly = true)
     List<DealDtos.MyOffer> myOffers(UUID userId) {
         return db.query("SELECT c.id, c.need_id, n.title, c.amount, n.currency, c.status, c.proposed_stake_pct,"
-                        + " c.proposed_terms_json::text AS terms, c.investment_rationale, c.created_at FROM commitments c"
+                        + " c.proposed_terms_json::text AS terms, c.investment_rationale, c.created_at, c.issuer_decision"
+                        + " FROM commitments c"
                         + " JOIN funding_needs n ON n.id = c.need_id JOIN investors i ON i.id = c.investor_id"
                         + " WHERE i.owner_user_id = ? ORDER BY c.created_at DESC LIMIT 200",
                 (rs, k) -> new DealDtos.MyOffer(uuid(rs, "id"), uuid(rs, "need_id"), rs.getString("title"),
                         rs.getBigDecimal("amount"), rs.getString("currency"), rs.getString("status"),
                         rs.getBigDecimal("proposed_stake_pct"), tree(rs.getString("terms")),
-                        rs.getString("investment_rationale"), instant(rs, "created_at")), userId);
+                        rs.getString("investment_rationale"), instant(rs, "created_at"), rs.getString("issuer_decision")), userId);
     }
 
     /** "Not for us", with an optional reason. Not possible while an offer is live: that money is already reserved. */
@@ -89,8 +94,8 @@ class DealService {
         UUID needId = (UUID) rows.get(0).get("need_id");
         UUID investorId = (UUID) rows.get(0).get("investor_id");
         lockInvestor(investorId); // the same lock an offer takes, so a pass and an offer cannot interleave
-        if (count("SELECT count(*) FROM commitments WHERE need_id = ? AND investor_id = ? AND status IN ('ACCEPTED','PENDING_REVIEW')",
-                needId, investorId) > 0) {
+        if (count("SELECT count(*) FROM commitments WHERE need_id = ? AND investor_id = ? AND status IN ('ACCEPTED','PENDING_REVIEW')"
+                + " AND issuer_decision <> 'DECLINED'", needId, investorId) > 0) {
             throw new ApiException(HttpStatus.CONFLICT, "You have a live offer on this deal, so you cannot pass on it");
         }
         db.update("UPDATE match_results r SET investor_decision = 'PASSED', pass_reason = ?, decided_at = now() FROM match_runs m"

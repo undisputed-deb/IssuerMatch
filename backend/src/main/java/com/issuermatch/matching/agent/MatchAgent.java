@@ -45,11 +45,11 @@ public class MatchAgent {
             4. You can only read data. You cannot send, change, approve or delete anything.
             5. Your final answer is ONLY a JSON object, with no markdown and no extra text:
                {"rankings":[{"investorId":"<uuid from tool results>",
-                 "explanation":"<2-4 sentences for our analyst using facts from the tools>",
+                 "explanation":"<1-2 crisp sentences for our analyst, at most 40 words, using facts from the tools>",
                  "citedTools":["scoreFit","getInvestorHistory"],
                  "dealBrief":"<exactly 2 sentences FOR THAT INVESTOR on why this deal fits their thesis>",
                  "suggestedDiligenceQuestions":["<question>","<question>","<question>"]}]}
-               Up to 10 qualified investors, best first. citedTools lists the tools whose results you used.
+               Rank only the 5 best qualified investors or fewer, best first. citedTools lists the tools whose results you used.
             6. suggestedDiligenceQuestions are asked BY the investor TO the issuer's founder, who answers them. Address
                the founder as "you" and "your company". Never ask about the investor's own mandate, thesis, capital,
                experience, portfolio or process. Give exactly 3 questions of at most 20 words each, each on a different

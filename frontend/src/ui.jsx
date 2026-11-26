@@ -64,6 +64,9 @@ const STATUS = {
   FAILED: ['Failed', 'bg-bad-bg text-bad', '✕'],
   CLOSED: ['Closed', 'bg-rule/60 text-ink', '■'],
   ACCEPTED: ['Accepted', 'bg-good-bg text-good', '✓'],
+  OFFER_AWAITING: ['Awaiting company answer', 'bg-flag-bg text-flag', '▲'],
+  OFFER_ACCEPTED: ['Accepted by company', 'bg-good-bg text-good', '✓'],
+  OFFER_DECLINED: ['Declined by company', 'bg-bad-bg text-bad', '✕'],
 };
 
 /** Status as shape plus word, so it never depends on colour alone. */
@@ -75,6 +78,29 @@ export function Status({ value }) {
       {label}
     </span>
   );
+}
+
+/** Where an offer stands: risk rules and review first, then the company's own answer. */
+export function offerStatus(offer) {
+  if (offer.status !== 'ACCEPTED') return offer.status;
+  return offer.issuerDecision === 'ACCEPTED' ? 'OFFER_ACCEPTED' : offer.issuerDecision === 'DECLINED' ? 'OFFER_DECLINED' : 'OFFER_AWAITING';
+}
+
+/** Granted by an admin only. */
+export function Verified({ when: verified }) {
+  if (!verified) return null;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-sm border border-good bg-good-bg px-1.5 text-xs font-medium whitespace-nowrap text-good">
+      <span aria-hidden="true">✓</span>Verified
+    </span>
+  );
+}
+
+/** A link typed by a user. Only http(s) becomes clickable; anything else stays text. */
+export function Website({ url }) {
+  if (!url) return null;
+  if (!/^https?:\/\//i.test(url)) return <span className="break-all">{url}</span>;
+  return <a href={url} target="_blank" rel="noopener noreferrer nofollow" className="break-all text-brand underline">{url}</a>;
 }
 
 export function Button({ children, tone = 'primary', busy, ...props }) {
@@ -109,7 +135,8 @@ export const when = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { da
 const AS_IS = new Set(['USD', 'EUR', 'GBP', 'CHF', 'JPY', 'INR', 'SGD', 'AUD', 'CAD', 'AED', 'VC', 'PE', 'MEA', 'LATAM']);
 export const words = (v) =>
   AS_IS.has(v) ? v : v.toLowerCase().replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase())
-    .replace(/\bvc\b/i, 'VC').replace('Series b plus', 'Series B+').replace('Series a', 'Series A');
+    .replace(/\bvc\b/i, 'VC').replace('Series b plus', 'Series B+').replace('Series a', 'Series A')
+    .replace('Co lead', 'Co-lead').replace('Follow on', 'Follow-on');
 
 export const control = 'mt-1 min-h-11 w-full rounded-sm border border-ink/30 bg-sheet px-3';
 
@@ -139,6 +166,8 @@ export const RISKS = ['LOW', 'MEDIUM', 'HIGH'];
 
 export const CURRENCIES = ['USD', 'EUR', 'GBP', 'CHF', 'JPY', 'INR', 'SGD', 'AUD', 'CAD', 'AED'];
 export const STAGES = ['PRE_SEED', 'SEED', 'SERIES_A', 'SERIES_B_PLUS', 'GROWTH', 'MIDDLE_MARKET'];
+export const PARTICIPATION_ROLES = ['LEAD', 'CO_LEAD', 'FOLLOW_ON'];
+export const TEAM_SIZES = ['1-10', '11-50', '51-200', '201-1000', '1000+'];
 export const INVESTOR_TYPES = ['VC', 'PE', 'PRIVATE_CREDIT', 'FAMILY_OFFICE', 'CORPORATE_VC', 'ANGEL_SYNDICATE'];
 
 /** Empty text becomes "not given" (null); otherwise a number. */
