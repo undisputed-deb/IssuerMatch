@@ -10,11 +10,15 @@ out="scripts/load/results"; mkdir -p "$out"
 VUS=${VUS:-50}; DURATION=${DURATION:-60s}
 app_pid=""
 cleanup() {
-  [ -n "$app_pid" ] && kill "$app_pid" 2>/dev/null || true
+  if [ -n "$app_pid" ]; then
+    kill "$app_pid" 2>/dev/null || true
+    wait "$app_pid" 2>/dev/null || true   # let it finish shutting down before its database and broker disappear
+  fi
   docker compose --profile load down -v >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
+curl -sf localhost:8080/health >/dev/null && { echo "port 8080 is already serving an app: stop it first"; trap - EXIT; exit 1; }
 docker compose --profile load down -v >/dev/null 2>&1 || true
 docker compose --profile load up -d --wait kafka postgres-load >/dev/null 2>&1
 (cd backend && ./mvnw -q package -DskipTests)

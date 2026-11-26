@@ -24,6 +24,7 @@ IssuerMatch: Spring Boot + Kafka + Spring AI agent that ranks investors for issu
 - Task 38 DONE: V15 dead_letters, DeadLetterConsumer (pattern .*\.DLT, own container factory that retries forever, never DLTs itself), GET /admin/dead-letters[/{id}], POST /admin/dead-letters/{id}/replay (ADMIN, once, only Topics.CONSUMED, via outbox, audited).
 - Task 39 DONE: V16, ReconciliationService (REPEATABLE_READ; CAPACITY_MISMATCH, MISSING_EVENT after grace 1m, DUPLICATE_EVENT, UNEXPECTED_EVENT, AMOUNT_MISMATCH), job every 5m, 7d report retention, GET /admin/reconciliation/latest, POST /run. Seeded-mismatch tests.
 - Task 40 DONE: scripts/load/{run.sh,seed.sql,commitments.js} + compose profile "load" (Postgres :5433). docs/LOAD_TEST.md: 619 req/s, p95 133ms, 0 errors; found outbox bottleneck -> batched publisher (500), scheduler pool 4, ledger concurrency 3; backlog 105,334 -> 439, catch-up >10min -> 27s, reconciliation 1499 -> 0.
+- Real Supabase boot with V1-V16 verified: reconciliation 0 mismatches, 0 dead letters. run.sh refuses to start if :8080 is busy and waits for app shutdown before removing containers.
 - 241 tests green.
 - GitGuardian alert handled: no real secret was ever committed (gitleaks full history clean, none of the .env values in any commit). Credential-shaped test literals (fake `AQ.` key text, JWT-shaped strings, Basic auth `admin:admin`) are now built at runtime so scanners cannot flag them.
 
