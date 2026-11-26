@@ -41,6 +41,8 @@ IssuerMatch: Spring Boot + Kafka + Spring AI agent that ranks investors for issu
 - New 3-phase upgrade spec (2026-11-26). Rules: after EACH phase run tests + build, commit (author = user only), push, STOP and report. Phase 1 done; wait for the user before Phase 2.
 - UPGRADE PHASE 1 DONE (356 tests, 94.4% lines / 85.5% branches, 49 endpoints, build ok): prompt asks investor->founder questions, exactly 3 (validator: <=30 words, rejects "your thesis/mandate"), dealBrief 2 sentences <=400 chars; GET /investor/questions replaces per-deal polling (Thread fetches, ThreadView renders); scripts/e2e-cleanup.{sh,sql} + e2e-delete-users.mjs run from Playwright global teardown and e2e.sh EXIT trap; `scripts/e2e.sh accounts` runs signup+deal; fixed 3px mobile overflow on RunDetail (long tool name). E2E rows deleted from the local app DB; Supabase had none.
 
+- Gotcha (2026-11-26): Gemini free tier allows 20 generate requests/day for gemini-2.5-flash and one match run uses several. When spent (HTTP 429) matching falls back to DEGRADED_DETERMINISTIC, and the smoke test still passes. Check the app log for "without the model" before claiming a live model check.
+
 ## Next steps
 1. Phase 2 (when the user says go): issuer profile fields + verified flags (ADMIN PATCH), investor participation_role/deployment_status + mandate target_stages in FitScorer (PAUSED excluded), investor summary card on offers, issuer accept/decline of ACCEPTED commitments (lock need, release capacity, outbox event, reconciliation). Full spec is in the chat; ask the user to paste it again if lost.
 2. Phase 3: investor_members + investor_invites (copy-link, SHA-256 token, 7 days), org roles MANAGING_DIRECTOR/ANALYST/VIEWER enforced server-side, Team tab, /invite/:token route, tests + docs.
