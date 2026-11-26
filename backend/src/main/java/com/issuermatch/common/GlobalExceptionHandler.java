@@ -11,6 +11,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -69,6 +70,18 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 .sorted()
                 .collect(Collectors.joining("; "));
         return objectBody(status, "VALIDATION_ERROR", message);
+    }
+
+    /** A chunked body that passed the size limit fails while being parsed: report it as 413, not as bad JSON. */
+    @Override
+    protected ResponseEntity<Object> handleHttpMessageNotReadable(
+            HttpMessageNotReadableException e, HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        for (Throwable cause = e.getCause(); cause != null; cause = cause.getCause()) {
+            if (cause instanceof PayloadTooLargeException) {
+                return objectBody(HttpStatus.valueOf(413), "PAYLOAD_TOO_LARGE", cause.getMessage());
+            }
+        }
+        return handleExceptionInternal(e, null, headers, status, request);
     }
 
     /** Every other Spring MVC exception lands here. */
