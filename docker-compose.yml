@@ -39,3 +39,19 @@ services:
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+
+  # Throwaway database for the load test only (profile "load"). Never your real database.
+  # trust auth is acceptable because the port is bound to 127.0.0.1 and the data is synthetic.
+  postgres-load:
+    image: postgres:17-alpine
+    profiles: ["load"]
+    container_name: issuermatch-pg-load
+    ports:
+      - "127.0.0.1:5433:5432"
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20

@@ -20,16 +20,20 @@ IssuerMatch: Spring Boot + Kafka + Spring AI agent that ranks investors for issu
 - Gap fixes: (a) CommitmentService also locks the investor row (`FOR NO KEY UPDATE`, order need -> investor) so parallel requests across needs can't slip under velocity/duplicate/concentration (burst test: was 10 clean passes of 15, now 4/5/6). (b) FAILED/reaped runs set need back to SUBMITTED; POST /funding-needs/{id}/match re-requests after FAILED/REJECTED run (atomic claim, 409 otherwise, owner or staff). (c) IdempotencyCleanup removes keys older than app.idempotency.ttl=24h (V13 index).
 - Task 37 DONE: CommitmentEvents publishes commitment.requested (always) + accepted/rejected (on decision or review) via outbox; CommitmentLedgerConsumer writes commitment_events (V14, event_id PK, no FKs on purpose), validates payload/topic/type, bad -> <topic>.DLT.
 - 223 tests green; app boots on real Supabase with V1-V14.
+- Test admin on real Supabase: admin@issuermatch.test (password in git-ignored backend/.env.admin; delete the user when done). Created via SQL into auth.users/identities, roles in app_metadata. Real login + live API call verified (ES256, roles ADMIN, 200s). scripts/api.sh logs in and calls the API.
+- Task 38 DONE: V15 dead_letters, DeadLetterConsumer (pattern .*\.DLT, own container factory that retries forever, never DLTs itself), GET /admin/dead-letters[/{id}], POST /admin/dead-letters/{id}/replay (ADMIN, once, only Topics.CONSUMED, via outbox, audited).
+- Task 39 DONE: V16, ReconciliationService (REPEATABLE_READ; CAPACITY_MISMATCH, MISSING_EVENT after grace 1m, DUPLICATE_EVENT, UNEXPECTED_EVENT, AMOUNT_MISMATCH), job every 5m, 7d report retention, GET /admin/reconciliation/latest, POST /run. Seeded-mismatch tests.
+- Task 40 DONE: scripts/load/{run.sh,seed.sql,commitments.js} + compose profile "load" (Postgres :5433). docs/LOAD_TEST.md: 619 req/s, p95 133ms, 0 errors; found outbox bottleneck -> batched publisher (500), scheduler pool 4, ledger concurrency 3; backlog 105,334 -> 439, catch-up >10min -> 27s, reconciliation 1499 -> 0.
+- 241 tests green.
 - GitGuardian alert handled: no real secret was ever committed (gitleaks full history clean, none of the .env values in any commit). Credential-shaped test literals (fake `AQ.` key text, JWT-shaped strings, Basic auth `admin:admin`) are now built at runtime so scanners cannot flag them.
 
 ## In progress
 - nothing
 
 ## Next steps
-1. Task 38: dead_letters table + consumer(s) reading *.DLT topics (store topic, key, original payload, exception reason from kafka_dlt-* headers), ADMIN endpoints GET /admin/dead-letters (paged) and POST /admin/dead-letters/{id}/replay (republish original payload to the source topic once; audited; replayed_at set).
-2. Then reconciliation job with seeded mismatches, k6 load test with real numbers.
-3. Then Phase 5 security (Bucket4j rate limits, CORS + CSP/HSTS, prompt-injection tests, log/PII hygiene, dependency scan in CI), Phase 6 audit + SECURITY_AUDIT.md, Phase 7 frontend (Supabase JS login), Phase 8 observability/Docker/CI, Phase 9 README + INTERVIEW_NOTES.
-4. Not yet tested: a real logged-in user token against the live API (needs a Supabase user with app_metadata roles).
+1. Phase 5 security: first answer the questions in the spec (rate limiting? validation? auth? which OWASP / OWASP LLM items apply), then Bucket4j rate limits (stricter on POST /funding-needs and /match since they cost LLM money), CORS (explicit origin) + CSP/HSTS/Referrer-Policy, prompt-injection tests, log/PII hygiene, dependency scan in CI. For each: attack stopped, why it matters here, honest resume bullet.
+2. Phase 6 audit + SECURITY_AUDIT.md, Phase 7 frontend (Supabase JS login), Phase 8 observability/Docker/CI, Phase 9 README + INTERVIEW_NOTES.
+3. Known gaps: published outbox rows and processed_events are never purged; reconciliation only reports (no repair); load test measured once each.
 
 ## Decisions & gotchas
 - Never print .env values. Names only. SUPABASE_SECRET_KEY unused.
