@@ -10,7 +10,6 @@ import jakarta.servlet.http.HttpServletRequestWrapper;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -21,7 +20,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
  * description). A declared Content-Length is rejected up front; a chunked body is cut off once it passes the limit.
  */
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE + 20)
+@Order(-90) // right after the security chain (-100), so the 413 answer still carries CORS and security headers
 class RequestSizeLimitFilter extends OncePerRequestFilter {
 
     private final long maxBytes;

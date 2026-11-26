@@ -3,6 +3,7 @@ package com.issuermatch.security;
 import com.issuermatch.common.ErrorResponse;
 import java.io.IOException;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -25,6 +26,10 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -51,6 +56,15 @@ class SecurityConfig {
         http
                 .addFilterBefore(RateLimitFilters.perIp(limiter, limits), BearerTokenAuthenticationFilter.class)
                 .addFilterAfter(RateLimitFilters.perUser(limiter, limits), BearerTokenAuthenticationFilter.class)
+                .cors(Customizer.withDefaults()) // uses the corsConfigurationSource bean below
+                .headers(h -> h
+                        // this API returns only JSON: nothing may load or frame it
+                        .contentSecurityPolicy(c -> c.policyDirectives(
+                                "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"))
+                        .frameOptions(f -> f.deny())
+                        .referrerPolicy(r -> r.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
+                        .permissionsPolicyHeader(p -> p.policy("camera=(), microphone=(), geolocation=()"))
+                        .httpStrictTransportSecurity(t -> t.includeSubDomains(true).maxAgeInSeconds(31_536_000)))
                 // CSRF protects cookie sessions. This API has none: it only accepts an Authorization header.
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
@@ -64,6 +78,26 @@ class SecurityConfig {
                 .formLogin(f -> f.disable())
                 .logout(l -> l.disable());
         return http.build();
+    }
+
+    /**
+     * Exactly one browser origin may call the API (the frontend). A wildcard is refused at startup. No cookies are
+     * involved, so credentials stay off; the token travels in the Authorization header.
+     */
+    @Bean
+    CorsConfigurationSource corsConfigurationSource(@Value("${app.cors.allowed-origin}") String origin) {
+        if (origin == null || origin.isBlank() || origin.contains("*")) {
+            throw new IllegalStateException("app.cors.allowed-origin must be one exact origin, not empty and not a wildcard");
+        }
+        CorsConfiguration cors = new CorsConfiguration();
+        cors.setAllowedOrigins(List.of(origin));
+        cors.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE"));
+        cors.setAllowedHeaders(List.of("Authorization", "Content-Type", "Idempotency-Key", "X-Correlation-Id"));
+        cors.setExposedHeaders(List.of("Idempotent-Replayed", "Retry-After", "X-Correlation-Id"));
+        cors.setMaxAge(3600L);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", cors);
+        return source;
     }
 
     /**
