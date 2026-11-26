@@ -35,7 +35,8 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     /** Unique / foreign-key / check violations. The SQL detail stays in the log, not in the response. */
     @ExceptionHandler(DataIntegrityViolationException.class)
     ResponseEntity<ErrorResponse> conflict(DataIntegrityViolationException e) {
-        log.warn("Data integrity violation: {}", e.getMostSpecificCause().getMessage());
+        // The database's message can quote the offending row (names, funding text). Log only what identifies the rule.
+        log.warn("Data integrity violation: {}", describe(e.getMostSpecificCause()));
         return body(HttpStatus.CONFLICT, "CONFLICT", "Request conflicts with existing data");
     }
 
@@ -54,6 +55,14 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(PropertyReferenceException.class)
     ResponseEntity<ErrorResponse> badSort(PropertyReferenceException e) {
         return body(HttpStatus.BAD_REQUEST, "BAD_REQUEST", "Invalid sort property");
+    }
+
+    private static final java.util.regex.Pattern CONSTRAINT = java.util.regex.Pattern.compile("constraint \"(\\w+)\"");
+
+    private static String describe(Throwable cause) {
+        String state = cause instanceof java.sql.SQLException sql ? sql.getSQLState() : "?";
+        var name = CONSTRAINT.matcher(String.valueOf(cause.getMessage()));
+        return "SQLState=" + state + " constraint=" + (name.find() ? name.group(1) : "?");
     }
 
     @ExceptionHandler(Exception.class)

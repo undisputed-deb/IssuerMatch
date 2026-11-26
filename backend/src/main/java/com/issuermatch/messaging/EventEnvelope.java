@@ -1,5 +1,6 @@
 package com.issuermatch.messaging;
 
+import com.issuermatch.common.CorrelationId;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
@@ -9,7 +10,7 @@ public record EventEnvelope(UUID eventId, String type, Instant occurredAt, Strin
                             Map<String, Object> payload) {
 
     public static EventEnvelope of(String type, Map<String, Object> payload) {
-        return new EventEnvelope(UUID.randomUUID(), type, Instant.now(), UUID.randomUUID().toString(), payload);
+        return new EventEnvelope(UUID.randomUUID(), type, Instant.now(), CorrelationId.current(), payload);
     }
 
     /** Optional UUID field: null when absent, InvalidEventException when present but malformed. */

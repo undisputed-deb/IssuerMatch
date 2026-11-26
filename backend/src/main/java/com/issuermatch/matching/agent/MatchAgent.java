@@ -143,7 +143,10 @@ public class MatchAgent {
             throw new AgentFailure("Model timed out after " + timeout.toSeconds() + "s");
         } catch (ExecutionException e) {
             // The cause can contain provider details. Keep it in the log, not in the stored message.
-            log.warn("LLM call failed: {}", e.getCause().toString());
+            // provider messages can be long and could echo input: keep the type and a short prefix
+            String why = String.valueOf(e.getCause().getMessage());
+            log.warn("LLM call failed: {} {}", e.getCause().getClass().getSimpleName(),
+                    why.length() > 200 ? why.substring(0, 200) + "..." : why);
             throw new AgentFailure("Model call failed", e.getCause());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
