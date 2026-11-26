@@ -1,9 +1,12 @@
 package com.issuermatch.messaging;
 
+import java.sql.PreparedStatement;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -20,7 +23,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 class OutboxPublisher {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxPublisher.class);
-    private static final int BATCH = 100;
+    private static final int BATCH = 500;
+    private static final int SEND_TIMEOUT_SECONDS = 30;
 
     private final JdbcTemplate db;
     private final KafkaTemplate<String, String> kafka;
@@ -43,21 +47,39 @@ class OutboxPublisher {
         }
     }
 
-    /** @return true if the batch was full (there may be more) */
+    /**
+     * Sends a whole batch without waiting between messages (the producer is idempotent, so order per partition is
+     * kept), then waits for every acknowledgement, then marks the batch published with one statement. If any send
+     * fails nothing is marked and the batch is sent again later; consumers are idempotent, so repeats are harmless.
+     * Sending one at a time was the bottleneck the load test found (about 180 events/s).
+     *
+     * @return true if the batch was full (there may be more)
+     */
     private boolean publishBatch() {
         // SKIP LOCKED: two app instances never grab the same rows.
         List<Map<String, Object>> rows = db.queryForList(
                 "SELECT id, topic, event_key, payload FROM outbox WHERE published_at IS NULL"
                         + " ORDER BY created_at LIMIT " + BATCH + " FOR UPDATE SKIP LOCKED");
-        for (Map<String, Object> row : rows) {
-            try {
-                kafka.send((String) row.get("topic"), (String) row.get("event_key"), (String) row.get("payload"))
-                        .get(10, TimeUnit.SECONDS);
-            } catch (Exception e) {
-                throw new IllegalStateException("send failed for outbox row " + row.get("id"), e);
-            }
-            db.update("UPDATE outbox SET published_at = now() WHERE id = ?", (UUID) row.get("id"));
+        if (rows.isEmpty()) {
+            return false;
         }
+        CompletableFuture<?>[] sends = rows.stream()
+                .map(row -> kafka.send((String) row.get("topic"), (String) row.get("event_key"), (String) row.get("payload")))
+                .toArray(CompletableFuture<?>[]::new);
+        try {
+            CompletableFuture.allOf(sends).get(SEND_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("interrupted while publishing", e);
+        } catch (ExecutionException | TimeoutException e) {
+            throw new IllegalStateException("could not publish a batch of " + rows.size() + " outbox rows", e);
+        }
+        Object[] ids = rows.stream().map(row -> row.get("id")).toArray();
+        db.update(connection -> {
+            PreparedStatement mark = connection.prepareStatement("UPDATE outbox SET published_at = now() WHERE id = ANY(?)");
+            mark.setArray(1, connection.createArrayOf("uuid", ids));
+            return mark;
+        });
         return rows.size() == BATCH;
     }
 }

@@ -38,7 +38,8 @@ class CommitmentLedgerConsumer {
         this.db = db;
     }
 
-    @KafkaListener(topics = {Topics.COMMITMENT_REQUESTED, Topics.COMMITMENT_ACCEPTED, Topics.COMMITMENT_REJECTED})
+    @KafkaListener(topics = {Topics.COMMITMENT_REQUESTED, Topics.COMMITMENT_ACCEPTED, Topics.COMMITMENT_REJECTED},
+            concurrency = "3") // one thread per topic partition; inserts are independent and idempotent
     public void record(ConsumerRecord<String, String> message) {
         EventEnvelope event = parser.parse(message.value());
         Kind kind = KINDS.get(message.topic());
