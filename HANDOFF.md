@@ -25,16 +25,21 @@ IssuerMatch: Spring Boot + Kafka + Spring AI agent that ranks investors for issu
 - Task 39 DONE: V16, ReconciliationService (REPEATABLE_READ; CAPACITY_MISMATCH, MISSING_EVENT after grace 1m, DUPLICATE_EVENT, UNEXPECTED_EVENT, AMOUNT_MISMATCH), job every 5m, 7d report retention, GET /admin/reconciliation/latest, POST /run. Seeded-mismatch tests.
 - Task 40 DONE: scripts/load/{run.sh,seed.sql,commitments.js} + compose profile "load" (Postgres :5433). docs/LOAD_TEST.md: 619 req/s, p95 133ms, 0 errors; found outbox bottleneck -> batched publisher (500), scheduler pool 4, ledger concurrency 3; backlog 105,334 -> 439, catch-up >10min -> 27s, reconciliation 1499 -> 0.
 - Real Supabase boot with V1-V16 verified: reconciliation 0 mismatches, 0 dead letters. run.sh refuses to start if :8080 is busy and waits for app shutdown before removing containers.
-- 241 tests green.
+- Phases 5-9 of the original spec DONE: security (SBOM scan + pins, hostile input fixes, Bucket4j rate limits, CORS/headers, injection flags + output checks, log hygiene + correlation ids, required secrets, 503 on DB down), SECURITY_AUDIT.md (13 findings), retention cleanup (V18), actuator + metrics, React frontend (frontend/, e2e scripts/e2e.sh), Dockerfiles + compose profile "app" (`docker compose --env-file backend/.env --profile app up --build`), GitHub Actions CI (green on 67f690c) + Dependabot (PRs open, unmerged), README.md, INTERVIEW_NOTES.md, docs/SECURITY.md.
+- 281 backend tests, 94.6% line / 85.3% branch coverage.
 - GitGuardian alert handled: no real secret was ever committed (gitleaks full history clean, none of the .env values in any commit). Credential-shaped test literals (fake `AQ.` key text, JWT-shaped strings, Basic auth `admin:admin`) are now built at runtime so scanners cannot flag them.
 
 ## In progress
 - nothing
 
 ## Next steps
-1. Phase 5 security: first answer the questions in the spec (rate limiting? validation? auth? which OWASP / OWASP LLM items apply), then Bucket4j rate limits (stricter on POST /funding-needs and /match since they cost LLM money), CORS (explicit origin) + CSP/HSTS/Referrer-Policy, prompt-injection tests, log/PII hygiene, dependency scan in CI. For each: attack stopped, why it matters here, honest resume bullet.
-2. Phase 6 audit + SECURITY_AUDIT.md, Phase 7 frontend (Supabase JS login), Phase 8 observability/Docker/CI, Phase 9 README + INTERVIEW_NOTES.
-3. Known gaps: published outbox rows and processed_events are never purged; reconciliation only reports (no repair); load test measured once each.
+CURRENT TASK (user spec, 2026-11-26): evolve into a two-sided platform. Execute in order, after EACH phase run `./mvnw test` + `npm run build`, report, commit (author = user only).
+1. Phase 1: INVESTOR role, rate-limited public POST /auth/signup (ISSUER/INVESTOR only), SupabaseAuthAdminClient (real + fake), investors.owner_user_id migration, Sign In/Create Account UI, role routing, strict isolation (only ANALYST/ADMIN list all needs / see runs).
+2. Phase 2: institutional investor profile (GET/PUT /investors/me), dynamic funding needs with sealed instrument terms (Jackson 3), new UI forms.
+3. Phase 3: pgvector (pgvector/pgvector:pg17), thesis embeddings, structured ScoreBreakdown + FX, up to 10 matches, deal briefs + diligence questions, Resilience4j + token budget + DEGRADED_DETERMINISTIC, GET /investor/matches.
+4. Phase 4: investor offers via POST /commitments (keep all safeguards), pass endpoint, deal Q&A (deal_questions), role dashboards.
+5. Phase 5: isolation + end-to-end tests, README/AUTH/INTERVIEW_NOTES/HANDOFF update with verified counts.
+Rules: Jackson 3 only; RLS on every new table; Testcontainers Kafka 3.8.0; no live Gemini/Supabase Auth in tests; no credential-shaped literals; Maven deps in LAST </dependencies>.
 
 ## Decisions & gotchas
 - Never print .env values. Names only. SUPABASE_SECRET_KEY unused.
