@@ -38,14 +38,13 @@ Last verified on `edccaa9`: `./mvnw test` 390 pass (95.0% lines / 86.0% branches
 `scripts/e2e.sh offline` 6/6 pass.
 
 ## In progress
-- Nothing half-written. Commit `b6f6523` is pushed to `main`; manual review is complete.
-- Feature verification passed: 390 backend tests, frontend build, both Docker builds. Local stack is healthy at V29
-  (`/health` UP, web HTTP 200); zero E2E rows/accounts. `foodwaste-db` is untouched. No Gemini calls during follow-up.
-- Spring AI retries are capped at one attempt; 429 and client errors do not retry. `e2e.sh accounts` spaces specs by 60s.
+- Nothing half-written. Asker name/email displays in issuer, investor-team, admin, and analyst Q&A threads. Pass remains
+  Managing Director only in the UI and server. Frontend build passed; rebuilt web returns HTTP 200. No Gemini call.
+- Previous feature commit `b6f6523` is pushed to `main`; this portal follow-up is ready to commit.
 - `gh` is unavailable, so the latest `images` CI log has not been inspected.
 
 ## Next steps
-1. Check CI, including the `images` job, when GitHub CLI access is available (`gh` is not installed here).
+1. Commit and push the portal follow-up; then check CI when GitHub CLI access is available (`gh` is not installed here).
 2. No additional Gemini calls. Update README measured results only if the reviewed run metrics change.
 
 ## Decisions & gotchas

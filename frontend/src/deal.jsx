@@ -169,10 +169,10 @@ export function ThreadView({ needId, mode, thread, suggestions = [], canAsk = tr
           {thread.data?.map((q) => (
             <li key={q.id} className="border-l-4 border-rule pl-3">
               <p className="text-sm text-soft">{mode === 'investor' ? 'Your firm' : q.investorFirm} · {when(q.createdAt)}</p>
-              {mode === 'issuer' && <p className="text-sm text-soft">
+              <p className="text-sm text-soft">
                 Asked by <span className="font-medium text-ink">{q.askedByName || 'Investor team member'}</span>
                 {q.askedByEmail && <> · <a className="underline hover:text-ink" href={`mailto:${q.askedByEmail}`}>{q.askedByEmail}</a></>}
-              </p>}
+              </p>
               <p className="max-w-prose whitespace-pre-wrap break-words font-medium">{q.question}</p>
               {q.answer && <p className="mt-1 max-w-prose whitespace-pre-wrap break-words">{q.answer}</p>}
               {!q.answer && (mode === 'issuer'
