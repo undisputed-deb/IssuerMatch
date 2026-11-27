@@ -38,32 +38,14 @@ Last verified on `edccaa9`: `./mvnw test` 390 pass (95.0% lines / 86.0% branches
 `scripts/e2e.sh offline` 6/6 pass.
 
 ## In progress
-- Follow-up implemented: questions retain asker name/email; issuers get a live unanswered-question badge; only Managing
-  Directors can pass or submit offers; offers support an optional custom letter. Added V29; do not call Gemini.
-- Verification: `./mvnw test` 390 pass; `npm run build` pass; both local Docker builds pass. `gh` is unavailable, so the
-  latest `images` CI log cannot be inspected here. No live Gemini calls made.
-- Rebuild local compose stack with V29, verify health and clean out any existing E2E rows/accounts if present. Leave
-  localhost:5173 ready for the user's manual checklist.
-- Local stack is rebuilt and healthy at V29; API `/health` is UP and web returns HTTP 200. Local E2E row counts are
-  zero; Supabase cleanup found zero `e2e-*` accounts. `foodwaste-db` remains running and untouched.
-- User reviewed the manual checklist and approved committing the changes.
-- Spring AI retries are capped at one attempt; 429 and client errors do not retry. `e2e.sh accounts` waits 60 seconds
-  between specs. Spring MVC request body logging is pinned to INFO after `LogHygieneTest` caught DEBUG body output.
-- `./mvnw test` passed (390 tests). Both local Docker builds passed. `gh` is unavailable, so the `images` CI log could
-  not be inspected.
-- Live signup passed 2/2, deal passed 1/1, and team passed 2/2. Investor thesis and need vector counts rose during live
-  flows. Two live chat runs succeeded. No `without the model`, `Could not embed`, or LLM failure lines appeared; test
-  cleanup removed the E2E accounts and rows.
-- Large-pool smoke passed in AGENT mode and printed the full model output: 2 ranked firms, 9,519 ms, 4,602 input tokens,
-  575 output tokens. Each result had 3 diligence questions. The test delayed background indexing of its 50 seeded theses
-  to protect quota; on-demand need embedding remained enabled.
-- Chaos and dependency scans passed. Chaos verified deterministic fallback, Kafka and database recovery, and no secrets
-  in its log. OSV found no issues in 181 backend or 88 frontend packages.
-- The shared stack is healthy again: API health UP on 8080, web on 5173, local DB V28. Cleanup found zero E2E rows
-  and zero remaining test accounts. `foodwaste-db` remains running. The user should complete step 7 before step 8.
+- Nothing half-written. Commit `b6f6523` is pushed to `main`; manual review is complete.
+- Feature verification passed: 390 backend tests, frontend build, both Docker builds. Local stack is healthy at V29
+  (`/health` UP, web HTTP 200); zero E2E rows/accounts. `foodwaste-db` is untouched. No Gemini calls during follow-up.
+- Spring AI retries are capped at one attempt; 429 and client errors do not retry. `e2e.sh accounts` spaces specs by 60s.
+- `gh` is unavailable, so the latest `images` CI log has not been inspected.
 
 ## Next steps
-1. Commit and push the reviewed changes; check CI when GitHub CLI access is available.
+1. Check CI, including the `images` job, when GitHub CLI access is available (`gh` is not installed here).
 2. No additional Gemini calls. Update README measured results only if the reviewed run metrics change.
 
 ## Decisions & gotchas
@@ -73,7 +55,7 @@ Last verified on `edccaa9`: `./mvnw test` 390 pass (95.0% lines / 86.0% branches
 - Never print, log, commit or copy any `.env` value. Never put secrets in this file.
 - Test before saying done. Say when something is a guess. Ask when intent is unclear. Keep it simple.
 - Stack pins: Java 21, Spring Boot 4.1.3, Jackson 3 (`tools.jackson.*` only), Spring AI 2.0.3, Postgres 17,
-  React/Vite/Tailwind. DB changes only as new sequential Flyway migrations (next: V29), RLS on every new table.
+  React/Vite/Tailwind. DB changes only as new sequential Flyway migrations (next: V30), RLS on every new table.
 - `./mvnw test` must never call live Gemini or Supabase (fakes exist). Testcontainers Kafka stays `apache/kafka:3.8.0`
   (3.9.0 fails there; compose uses 3.9.0). No credential-shaped literals in tests. New Maven dependencies go in the LAST
   `</dependencies>` block. Keep `investors.owner_user_id`.
@@ -100,6 +82,5 @@ Last verified on `edccaa9`: `./mvnw test` 390 pass (95.0% lines / 86.0% branches
 - The Supabase Postgres database is separate from the compose one and is probably behind on migrations. Running the
   backend directly (`./mvnw spring-boot:run`) migrates it: ask the user first.
 - An unrelated container `foodwaste-db` runs on this machine: leave it alone.
-- Seen, not changed: `spring.ai.retry` defaults to 10 attempts; the single-partition match consumer lets one slow run
-  delay the next.
+- The single-partition match consumer lets one slow run delay the next.
 - More: README.md, docs/AUTH.md, docs/RISK.md, docs/SECURITY.md, SECURITY_AUDIT.md, INTERVIEW_NOTES.md.
