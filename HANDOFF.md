@@ -38,12 +38,12 @@ Last verified on `edccaa9`: `./mvnw test` 390 pass (95.0% lines / 86.0% branches
 `scripts/e2e.sh offline` 6/6 pass.
 
 ## In progress
-- Nothing half-written. Commit `766878f` is pushed to `main`; asker identity displays in every Q&A portal. Pass remains
-  Managing Director only in the UI and server. Frontend build passed; rebuilt web returns HTTP 200. No Gemini call.
+- Offer-letter field moved to the top of the MD form with explicit copy. Frontend build passed, web container rebuilt,
+  localhost:5173 returns HTTP 200. No Gemini calls; ready to commit.
 - `gh` is unavailable, so the latest `images` CI log has not been inspected.
 
 ## Next steps
-1. Check CI when GitHub CLI access is available (`gh` is not installed here).
+1. Commit and push this offer-form visibility fix; then check CI when GitHub CLI access is available (`gh` is not installed here).
 2. No additional Gemini calls. Update README measured results only if the reviewed run metrics change.
 
 ## Decisions & gotchas

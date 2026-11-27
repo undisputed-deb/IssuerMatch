@@ -59,6 +59,13 @@ export default function OfferDrawer({ deal, investorId, onClose, onSent }) {
       </div>
       {state.result ? <Result offer={state.result} /> : (
         <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2">
+          <Field label="Custom letter to the issuer (optional)" wide>
+            <textarea className={`${control} py-2`} rows={3} maxLength={5000} value={form.offerLetter}
+              onChange={set('offerLetter')} aria-describedby="offer-letter-help" />
+            <span id="offer-letter-help" className="mt-1 block text-sm text-soft">
+              Write a personal note to the company as your firm’s Managing Director.
+            </span>
+          </Field>
           <Input label={`Amount (${deal.currency})`} wide type="number" required min="0.01" step="0.01" value={form.amount} onChange={set('amount')} />
           {equity && <Input label="Stake you want (%)" type="number" min="0.001" max="100" step="0.001" value={form.stake} onChange={set('stake')} />}
           <Input label={`Valuation (${deal.currency})`} type="number" min="0.01" step="0.01" value={form.valuation} onChange={set('valuation')} />
@@ -69,11 +76,6 @@ export default function OfferDrawer({ deal, investorId, onClose, onSent }) {
           </Field>
           <Field label="Why you like this company" wide>
             <textarea className={`${control} py-2`} rows={5} required maxLength={5000} value={form.rationale} onChange={set('rationale')} />
-          </Field>
-          <Field label="Personal offer letter to the issuer (optional)" wide>
-            <textarea className={`${control} py-2`} rows={5} maxLength={5000} value={form.offerLetter} onChange={set('offerLetter')}
-              aria-describedby="offer-letter-help" />
-            <span id="offer-letter-help" className="mt-1 block text-sm text-soft">Write a note to the issuer on behalf of your firm.</span>
           </Field>
           <p className="text-sm text-soft sm:col-span-2">The issuer sees your firm, contact, amount, terms and reason. Risk checks run before the offer is accepted.</p>
           <div className="sm:col-span-2">
