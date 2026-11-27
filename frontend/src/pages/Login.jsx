@@ -61,44 +61,27 @@ export default function Login({ onSignedIn }) {
 
   return (
     <main className="auth-layout grid min-h-screen lg:grid-cols-[55fr_45fr]">
-      <section className="auth-brand flex flex-col justify-between bg-ink px-6 py-5 text-white sm:px-8 lg:px-14 lg:py-10">
-        <header className="auth-brand-top flex flex-wrap items-center justify-between gap-3">
+      <section className="auth-brand flex flex-col justify-between bg-ink px-6 py-5 text-white sm:px-8 sm:py-7 lg:px-16 lg:py-10">
+        <header className="auth-brand-top">
           <p className="font-mono text-xl font-semibold tracking-tight">Issuer<span className="text-amber-300">Match</span></p>
-          <span className="rounded-full border border-white/20 bg-white/5 px-3 py-1 font-mono text-[0.62rem] tracking-[0.12em] text-white/75">
-            CAPITAL MATCHING · SYNTHETIC DATA
-          </span>
         </header>
 
-        <div className="auth-brand-middle mx-auto w-full max-w-2xl py-10 lg:py-12">
-          <h1 className="max-w-2xl text-3xl leading-tight font-semibold tracking-tight sm:text-4xl xl:text-5xl">
+        <div className="auth-brand-middle flex flex-1 flex-col justify-center">
+          <h1 className="max-w-lg text-3xl leading-tight font-semibold tracking-tight sm:text-4xl xl:text-[2.75rem]">
             Ranked investors, with the evidence behind every rank.
           </h1>
-          <div className="mt-8 max-w-md rounded-xl border border-white/10 bg-white/[0.04] p-5 shadow-lg shadow-black/10 backdrop-blur-sm">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="font-mono text-xs text-white/70">Sample match · Seed · $2.5M USD</p>
-              <span className="rounded-full border border-emerald-300/30 bg-emerald-300/10 px-2.5 py-1 text-[0.68rem] font-medium text-emerald-200">Human-approved</span>
-            </div>
-            <div className="mt-5 flex items-baseline justify-between gap-3">
-              <h2 className="font-semibold tracking-tight">Northbridge Capital</h2>
-              <strong className="font-mono text-lg text-amber-300">86.3 <span className="text-sm text-white/50">/ 100</span></strong>
-            </div>
-            <div className="mt-4 space-y-3">
-              <ScoreBar label="Mandate" score="25/25" percent="100%" />
-              <ScoreBar label="Ticket" score="20/20" percent="100%" />
-              <ScoreBar label="Thesis" score="9/10" percent="90%" />
-            </div>
-            <p className="mt-5 border-t border-white/10 pt-3 font-mono text-[0.62rem] tracking-wide text-white/55">
-              Read-only agent · Deterministic score · Full audit trail
-            </p>
-          </div>
+          <p className="mt-5 max-w-[52ch] text-sm leading-6 text-white/65 sm:text-base">
+            Structured raises matched against investor mandates and theses—scored deterministically and reviewed before introductions.
+          </p>
+          <ol className="mt-8 max-w-xl space-y-5 border-t border-white/10 pt-7 text-sm leading-6 text-white/75 sm:text-base">
+            <li className="flex gap-3"><span className="shrink-0 font-mono text-sm text-amber-300">01 —</span><span>An issuer submits a structured funding need.</span></li>
+            <li className="flex gap-3"><span className="shrink-0 font-mono text-sm text-amber-300">02 —</span><span>A read-only agent gathers thesis evidence; deterministic rules compute each score.</span></li>
+            <li className="flex gap-3"><span className="shrink-0 font-mono text-sm text-amber-300">03 —</span><span>Review staff approve before matched investor firms see the deal.</span></li>
+          </ol>
         </div>
 
-        <footer className="auth-brand-steps border-t border-white/20 pt-5">
-          <ol className="grid gap-3 text-sm leading-relaxed text-white/75 lg:grid-cols-3 lg:gap-5">
-            <Step number="01">An issuer submits a structured funding need.</Step>
-            <Step number="02">A read-only agent gathers thesis evidence. Deterministic rules compute each score.</Step>
-            <Step number="03">Review staff approve before matched investor firms see the deal.</Step>
-          </ol>
+        <footer className="auth-brand-footer font-mono text-xs tracking-wide text-white/50">
+          Synthetic demo environment · Role-isolated &amp; audited
         </footer>
       </section>
 
@@ -170,22 +153,6 @@ export default function Login({ onSignedIn }) {
       </section>
     </main>
   );
-}
-
-function ScoreBar({ label, score, percent }) {
-  return (
-    <div className="grid grid-cols-[4.25rem_1fr_2.6rem] items-center gap-2 text-xs">
-      <span className="text-white/65">{label}</span>
-      <span className="h-1.5 overflow-hidden rounded-full bg-white/10">
-        <span className="block h-full rounded-full bg-amber-300" style={{ width: percent }} />
-      </span>
-      <span className="text-right font-mono text-white/75">{score}</span>
-    </div>
-  );
-}
-
-function Step({ number, children }) {
-  return <li className="flex gap-2"><span className="font-mono text-amber-300">{number}</span><span>{children}</span></li>;
 }
 
 function AuthAvatar({ state, headTilt, pupilX }) {

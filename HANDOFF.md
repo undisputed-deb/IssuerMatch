@@ -35,18 +35,19 @@ repeat load test, merging Dependabot PRs.
   minutes-long fallback matching when Gemini is unreachable.
 - Login page avatar animation adapted into the existing React/Supabase login and signup flow; built and deployed to the
   local web container without touching auth behavior.
-- Auth screens now use a 55/45 desktop split, a compact mobile brand header, a match preview card, and a stateful dog
-  mascot with speech. Playwright selectors remain intact. Frontend build and 375px/1280px browser checks pass.
+- Auth screens use a 55/45 desktop split, a compact mobile brand header, and a stateful dog mascot with speech.
+  Playwright selectors remain intact. Frontend build and viewport checks pass.
+- Login brand panel now has one aligned inset, headline, subtitle, vertical steps, and muted footer. Removed the match
+  sample card and top badge. The mascot and auth panel stay unchanged.
 
 Last verified on `edccaa9`: `./mvnw test` 390 pass (95.0% lines / 86.0% branches), frontend build ok, 60 endpoints,
 `scripts/e2e.sh offline` 6/6 pass.
 
 ## In progress
-- Login UI changes are complete. `npm run build` passes. Playwright viewport checks at 375px and 1280px report no
-  horizontal scroll or console errors. `scripts/e2e.sh offline` passed 4 tests; the team spec failed on its existing
-  “Only a Managing Director can submit an offer” message assertion, and one follow-up test did not run. No Gemini call.
-- Local web container rebuilt with this login UI. Playwright reports no horizontal scroll or console errors at 375px and
-  1280px against localhost:5173; HTTP responds 200.
+- Left-panel polish passes `npm run build`. Playwright checks against localhost:5173 at 375px and 1280px found no
+  horizontal overflow or console errors; desktop content anchors align at 64px. The local web container returns HTTP 200.
+- Previous `scripts/e2e.sh offline` run passed 4 tests; its team spec failed on the “Only a Managing Director can submit
+  an offer” message assertion, and one follow-up test did not run. No Gemini call.
 - `gh` is unavailable, so the latest `images` CI log has not been inspected.
 
 ## Next steps

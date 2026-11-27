@@ -243,7 +243,7 @@
   }
 
   .auth-brand-middle,
-  .auth-brand-steps {
+  .auth-brand-footer {
     display: none;
   }
 
@@ -253,10 +253,6 @@
 
   .auth-brand-top > p {
     font-size: 1rem;
-  }
-
-  .auth-brand-top > span {
-    font-size: .55rem;
   }
 
   .auth-panel {
@@ -274,11 +270,6 @@
 @media (max-width: 390px) {
   .auth-brand-top {
     gap: .4rem;
-  }
-
-  .auth-brand-top > span {
-    padding: .25rem .5rem;
-    letter-spacing: .06em;
   }
 
   .auth-panel {
