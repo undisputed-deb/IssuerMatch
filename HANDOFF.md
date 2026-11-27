@@ -35,14 +35,18 @@ repeat load test, merging Dependabot PRs.
   minutes-long fallback matching when Gemini is unreachable.
 - Login page avatar animation adapted into the existing React/Supabase login and signup flow; built and deployed to the
   local web container without touching auth behavior.
+- Auth screens now use a 55/45 desktop split, a compact mobile brand header, a match preview card, and a stateful dog
+  mascot with speech. Playwright selectors remain intact. Frontend build and 375px/1280px browser checks pass.
 
 Last verified on `edccaa9`: `./mvnw test` 390 pass (95.0% lines / 86.0% branches), frontend build ok, 60 endpoints,
 `scripts/e2e.sh offline` 6/6 pass.
 
 ## In progress
-- No unfinished code changes. Login implementation passed `npm run build`, and local web container responds HTTP 200.
-  Reference behavior was tested in an isolated JS event harness; browser host was unavailable, so no live visual browser
-  check was possible. The reference sign-in button is inert; IssuerMatch retains its existing auth handlers.
+- Login UI changes are complete. `npm run build` passes. Playwright viewport checks at 375px and 1280px report no
+  horizontal scroll or console errors. `scripts/e2e.sh offline` passed 4 tests; the team spec failed on its existing
+  “Only a Managing Director can submit an offer” message assertion, and one follow-up test did not run. No Gemini call.
+- Local web container rebuilt with this login UI. Playwright reports no horizontal scroll or console errors at 375px and
+  1280px against localhost:5173; HTTP responds 200.
 - `gh` is unavailable, so the latest `images` CI log has not been inspected.
 
 ## Next steps

@@ -1,21 +1,81 @@
+.auth-layout {
+  width: 100%;
+  overflow-x: clip;
+  grid-template-rows: auto 1fr;
+}
+
+.auth-brand,
+.auth-panel {
+  min-width: 0;
+}
+
+.auth-brand-top {
+  min-height: 2.5rem;
+}
+
+.auth-brand-middle {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.auth-card {
+  box-shadow: 0 1px 2px rgb(15 23 42 / 5%), 0 18px 45px rgb(20 33 61 / 5%);
+}
+
+.auth-mascot-stage {
+  position: relative;
+  display: flex;
+  height: 11.5rem;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  background: linear-gradient(180deg, #fff 0%, #fff 76%, #fbfaf6 100%);
+}
+
+.auth-speech {
+  position: absolute;
+  z-index: 2;
+  top: 0.85rem;
+  left: 50%;
+  display: flex;
+  min-height: 2rem;
+  max-width: calc(100% - 1.5rem);
+  align-items: center;
+  justify-content: center;
+  transform: translateX(-50%);
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 96%);
+  padding: 0.35rem 0.8rem;
+  color: #334155;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgb(15 23 42 / 5%);
+  animation: speech-fade 180ms ease-out;
+}
+
 .auth-avatar {
   position: relative;
-  z-index: 0;
+  z-index: 1;
   display: grid;
   width: min(100%, 15rem);
-  height: 10rem;
-  margin: -0.5rem auto 1.25rem;
+  height: 9.5rem;
+  margin-bottom: -0.55rem;
   place-items: center;
 }
 
 .auth-avatar::before {
   position: absolute;
   z-index: -1;
-  bottom: 0.25rem;
-  width: 9rem;
-  height: 9rem;
+  bottom: 0.5rem;
+  width: 8rem;
+  height: 8rem;
   border-radius: 50%;
-  background: var(--color-flag-bg);
+  background: #fef3c7;
   content: '';
 }
 
@@ -23,6 +83,7 @@
   width: 14rem;
   height: 10.3rem;
   overflow: visible;
+  animation: avatar-breathe 3.8s ease-in-out infinite;
 }
 
 .auth-avatar-shadow {
@@ -33,11 +94,35 @@
   transform: rotate(var(--head-tilt));
   transform-box: view-box;
   transform-origin: 120px 78px;
-  transition: transform 180ms ease-out;
+  transition: transform 220ms ease-out;
 }
 
 .auth-avatar-ear {
   fill: #c08435;
+  transform-box: fill-box;
+  transform-origin: center bottom;
+}
+
+.auth-avatar:not(.password-hidden):not(.password-visible) .auth-avatar-ear-right {
+  animation: ear-twitch 6.4s ease-in-out infinite;
+}
+
+.auth-avatar-eyes {
+  animation: avatar-blink 5.2s ease-in-out infinite;
+  transform-box: view-box;
+  transform-origin: 120px 71px;
+}
+
+.auth-avatar-eye {
+  fill: #fff9ed;
+  stroke: #14213d;
+  stroke-width: 1.5;
+}
+
+.auth-avatar-pupils {
+  fill: #14213d;
+  transform: translateX(var(--pupil-x));
+  transition: transform 220ms ease-out;
 }
 
 .auth-avatar-fur {
@@ -48,10 +133,6 @@
 
 .auth-avatar-muzzle {
   fill: #fff9ed;
-}
-
-.auth-avatar-eyes {
-  fill: #14213d;
 }
 
 .auth-avatar-nose {
@@ -76,7 +157,7 @@
   stroke-linejoin: round;
   stroke-width: 3;
   transform: translateY(28px);
-  transition: transform 280ms ease-out;
+  transition: transform 320ms cubic-bezier(.2,.75,.3,1);
 }
 
 .auth-avatar-paws > path:first-child {
@@ -89,17 +170,145 @@
   stroke-width: 2;
 }
 
-.auth-avatar.covering .auth-avatar-paws {
+.auth-avatar-paw-right {
+  transition: transform 280ms ease-out;
+}
+
+.auth-avatar.password-hidden .auth-avatar-paws {
   transform: translateY(-37px);
 }
 
-.auth-avatar.peeking .auth-avatar-paws {
-  transform: translateY(-23px);
+.auth-avatar.password-visible .auth-avatar-paws {
+  transform: translateY(-34px);
+}
+
+.auth-avatar.password-visible .auth-avatar-paw-right {
+  transform: translateY(15px);
+}
+
+.auth-avatar.password-visible .auth-avatar-pupils {
+  transform: translateX(calc(var(--pupil-x) + 4px));
+}
+
+.auth-avatar.signup-issuer .auth-avatar-ear {
+  animation: ear-twitch 4.2s ease-in-out infinite;
+}
+
+.auth-avatar.signup-issuer .auth-avatar-ear-left {
+  transform: rotate(-5deg);
+}
+
+.auth-avatar.signup-issuer .auth-avatar-ear-right {
+  transform: rotate(5deg);
+}
+
+.auth-avatar.signup-investor .auth-avatar-head {
+  transform: rotate(calc(var(--head-tilt) - 2deg));
+}
+
+.auth-avatar.error .auth-avatar-head {
+  animation: head-shake 420ms ease-in-out;
+}
+
+@keyframes avatar-breathe {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+@keyframes avatar-blink {
+  0%, 42%, 46%, 88%, 92%, 100% { transform: scaleY(1); }
+  44%, 90% { transform: scaleY(.12); }
+}
+
+@keyframes ear-twitch {
+  0%, 88%, 94%, 100% { transform: rotate(0); }
+  91% { transform: rotate(-7deg); }
+}
+
+@keyframes head-shake {
+  0%, 100% { transform: rotate(var(--head-tilt)); }
+  25% { transform: rotate(calc(var(--head-tilt) - 4deg)); }
+  75% { transform: rotate(calc(var(--head-tilt) + 4deg)); }
+}
+
+@keyframes speech-fade {
+  from { opacity: .45; }
+  to { opacity: 1; }
+}
+
+@media (max-width: 1023px) {
+  .auth-brand {
+    min-height: auto;
+    padding: 1rem 1.25rem;
+  }
+
+  .auth-brand-middle,
+  .auth-brand-steps {
+    display: none;
+  }
+
+  .auth-brand-top {
+    min-height: 2rem;
+  }
+
+  .auth-brand-top > p {
+    font-size: 1rem;
+  }
+
+  .auth-brand-top > span {
+    font-size: .55rem;
+  }
+
+  .auth-panel {
+    align-items: flex-start;
+    padding-top: 1rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .auth-layout {
+    grid-template-rows: minmax(100vh, 1fr);
+  }
+}
+
+@media (max-width: 390px) {
+  .auth-brand-top {
+    gap: .4rem;
+  }
+
+  .auth-brand-top > span {
+    padding: .25rem .5rem;
+    letter-spacing: .06em;
+  }
+
+  .auth-panel {
+    padding-right: .75rem;
+    padding-left: .75rem;
+  }
+
+  .auth-mascot-stage {
+    height: 10.75rem;
+  }
+
+  .auth-speech {
+    font-size: .65rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .auth-speech,
+  .auth-avatar svg,
+  .auth-avatar-eyes,
+  .auth-avatar.signup-issuer .auth-avatar-ear,
+  .auth-avatar:not(.password-hidden):not(.password-visible) .auth-avatar-ear-right,
+  .auth-avatar.error .auth-avatar-head {
+    animation: none;
+  }
+
   .auth-avatar-head,
-  .auth-avatar-paws {
+  .auth-avatar-pupils,
+  .auth-avatar-paws,
+  .auth-avatar-paw-right {
     transition: none;
   }
 }
