@@ -14,15 +14,19 @@ final class DealDtos {
     record Offer(UUID commitmentId, UUID investorId, String investorFirm, String investorType, String contactName,
                  String contactRole, BigDecimal amount, String currency, String status, BigDecimal proposedStakePct,
                  JsonNode proposedTerms, String investmentRationale, Instant createdAt, String issuerDecision,
-                 BigDecimal aumOrRevenueUsd, BigDecimal deployableCapitalUsd, String websiteUrl, boolean verified) {}
+                 BigDecimal aumOrRevenueUsd, BigDecimal deployableCapitalUsd, String websiteUrl, boolean verified,
+                 String offerLetter) {}
 
     /** One of the calling investor's own offers. */
     record MyOffer(UUID commitmentId, UUID needId, String needTitle, BigDecimal amount, String currency, String status,
                    BigDecimal proposedStakePct, JsonNode proposedTerms, String investmentRationale, Instant createdAt,
                    String issuerDecision) {}
 
-    record Question(UUID id, UUID needId, UUID investorId, String investorFirm, String question, String answer,
+    record Question(UUID id, UUID needId, UUID investorId, String investorFirm, String askedByName, String askedByEmail,
+                    String question, String answer,
                     Instant createdAt, Instant answeredAt) {}
+
+    record QuestionCount(int count) {}
 
     record AskRequest(@NotBlank @Size(max = 2000) String question) {}
 

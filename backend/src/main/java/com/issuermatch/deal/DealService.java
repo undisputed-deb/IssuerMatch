@@ -62,7 +62,7 @@ class DealService {
         // the investor columns listed here are everything a company learns about a firm that offers
         return db.query("SELECT c.id, c.investor_id, i.name, i.investor_type, i.contact_name, i.role_title, c.amount, n.currency,"
                         + " c.status, c.proposed_stake_pct, c.proposed_terms_json::text AS terms, c.investment_rationale, c.created_at,"
-                        + " c.issuer_decision, i.aum_or_revenue_usd, i.deployable_capital_usd, i.website_url, i.verified"
+                        + " c.issuer_decision, i.aum_or_revenue_usd, i.deployable_capital_usd, i.website_url, i.verified, c.offer_letter"
                         + " FROM commitments c JOIN investors i ON i.id = c.investor_id JOIN funding_needs n ON n.id = c.need_id"
                         + " WHERE c.need_id = ? AND (? OR c.status <> 'REJECTED') ORDER BY c.created_at DESC LIMIT 200",
                 (rs, k) -> new DealDtos.Offer(uuid(rs, "id"), uuid(rs, "investor_id"), rs.getString("name"),
@@ -71,7 +71,7 @@ class DealService {
                         rs.getBigDecimal("proposed_stake_pct"), tree(rs.getString("terms")),
                         rs.getString("investment_rationale"), instant(rs, "created_at"), rs.getString("issuer_decision"),
                         rs.getBigDecimal("aum_or_revenue_usd"), rs.getBigDecimal("deployable_capital_usd"),
-                        rs.getString("website_url"), rs.getBoolean("verified")),
+                        rs.getString("website_url"), rs.getBoolean("verified"), rs.getString("offer_letter")),
                 needId, me.isStaff());
     }
 
@@ -97,7 +97,7 @@ class DealService {
         if (rows.isEmpty()) {
             throw new NotFoundException("Match not found");
         }
-        InvestorMembershipService.check(me.get(), OrgRole.ANALYST);
+        InvestorMembershipService.check(me.get(), OrgRole.MANAGING_DIRECTOR);
         UUID needId = (UUID) rows.get(0).get("need_id");
         UUID investorId = (UUID) rows.get(0).get("investor_id");
         lockInvestor(investorId); // the same lock an offer takes, so a pass and an offer cannot interleave
@@ -138,7 +138,15 @@ class DealService {
         return db.query(QUESTION + " WHERE q.investor_id = ? ORDER BY q.created_at, q.id", (rs, k) -> question(rs), firmOf(userId));
     }
 
-    DealDtos.Question ask(UUID needId, UUID userId, String text) {
+    @Transactional(readOnly = true)
+    DealDtos.QuestionCount unansweredQuestionCount(UUID userId) {
+        Integer count = db.queryForObject("SELECT count(*) FROM deal_questions q"
+                + " JOIN funding_needs n ON n.id = q.need_id JOIN issuers s ON s.id = n.issuer_id"
+                + " WHERE s.owner_user_id = ? AND q.answer IS NULL", Integer.class, userId);
+        return new DealDtos.QuestionCount(count == null ? 0 : count);
+    }
+
+    DealDtos.Question ask(UUID needId, UUID userId, String text, String tokenName, String tokenEmail) {
         var me = visibility.matchedFirm(userId, needId).orElseThrow(() -> new NotFoundException("Funding need not found"));
         InvestorMembershipService.check(me, OrgRole.ANALYST);
         UUID investorId = me.investorId();
@@ -147,8 +155,16 @@ class DealService {
                 >= MAX_QUESTIONS_PER_THREAD) {
             throw new ApiException(HttpStatus.CONFLICT, "This thread reached its limit of " + MAX_QUESTIONS_PER_THREAD + " questions");
         }
-        UUID id = db.queryForObject("INSERT INTO deal_questions(need_id, investor_id, asked_by, question) VALUES (?,?,?,?) RETURNING id",
-                UUID.class, needId, investorId, userId, text.strip());
+        List<Map<String, Object>> member = db.queryForList("SELECT display_name, email FROM investor_members"
+                + " WHERE investor_id = ? AND user_id = ?", investorId, userId);
+        String name = member.isEmpty() ? null : (String) member.get(0).get("display_name");
+        String email = member.isEmpty() ? null : (String) member.get(0).get("email");
+        if (name == null || name.isBlank()) name = tokenName;
+        if (email == null || email.isBlank()) email = tokenEmail;
+        if (name == null || name.isBlank()) name = "Investor team member";
+        UUID id = db.queryForObject("INSERT INTO deal_questions(need_id, investor_id, asked_by, asked_by_name, asked_by_email, question)"
+                        + " VALUES (?,?,?,?,?,?) RETURNING id",
+                UUID.class, needId, investorId, userId, name, email, text.strip());
         audit.record("DEAL_QUESTION_ASKED", "deal-question:" + id, ids(needId, investorId)); // ids only, never the text
         return byId(id);
     }
@@ -199,8 +215,10 @@ class DealService {
 
     // ---- mapping ----
 
-    private static final String QUESTION = "SELECT q.id, q.need_id, q.investor_id, i.name, q.question, q.answer, q.created_at,"
-            + " q.answered_at FROM deal_questions q JOIN investors i ON i.id = q.investor_id";
+    private static final String QUESTION = "SELECT q.id, q.need_id, q.investor_id, i.name,"
+            + " coalesce(q.asked_by_name, m.display_name) AS asked_by_name, coalesce(q.asked_by_email, m.email) AS asked_by_email,"
+            + " q.question, q.answer, q.created_at, q.answered_at FROM deal_questions q JOIN investors i ON i.id = q.investor_id"
+            + " LEFT JOIN investor_members m ON m.investor_id = q.investor_id AND m.user_id = q.asked_by";
 
     private DealDtos.Question byId(UUID id) {
         return db.queryForObject(QUESTION + " WHERE q.id = ?", (rs, k) -> question(rs), id);
@@ -208,7 +226,8 @@ class DealService {
 
     private static DealDtos.Question question(ResultSet rs) throws SQLException {
         return new DealDtos.Question(uuid(rs, "id"), uuid(rs, "need_id"), uuid(rs, "investor_id"), rs.getString("name"),
-                rs.getString("question"), rs.getString("answer"), instant(rs, "created_at"), instant(rs, "answered_at"));
+                rs.getString("asked_by_name"), rs.getString("asked_by_email"), rs.getString("question"),
+                rs.getString("answer"), instant(rs, "created_at"), instant(rs, "answered_at"));
     }
 
     private static Map<String, Object> ids(UUID needId, UUID investorId) {

@@ -97,7 +97,8 @@ function StaffArea({ user }) {
 
 function IssuerArea({ user }) {
   const [page] = useRoute();
-  const tabs = [['company', 'My dashboard'], ['new', 'Submit a need']];
+  const questionCount = useLoad(api.issuerQuestionCount, [], () => 15000);
+  const tabs = [['company', 'My dashboard', questionCount.data?.count ?? 0], ['new', 'Submit a need']];
   const active = page === 'new' ? 'new' : 'company';
   return (
     <Shell user={user} tabs={tabs} active={active}>
@@ -158,11 +159,13 @@ function Shell({ user, tabs, active, badge, children }) {
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-8 gap-y-1 px-4 py-2">
           <p className="font-mono text-lg tracking-tight">Issuer<span className="text-amber-300">Match</span></p>
           <nav aria-label="Main" className="flex flex-wrap">
-            {tabs.map(([key, label]) => (
+            {tabs.map(([key, label, count]) => (
               <a key={key} href={`#/${key}`} aria-current={active === key ? 'page' : undefined}
+                aria-label={count > 0 ? `${label}, ${count} unanswered question${count === 1 ? '' : 's'}` : undefined}
                 className={`flex min-h-11 items-center border-b-4 px-3 text-sm font-medium transition-colors ${
                   active === key ? 'border-amber-300 text-white' : 'border-transparent text-white/70 hover:text-white'}`}>
                 {label}
+                {count > 0 && <span aria-hidden="true" className="ml-2 rounded-full bg-amber-300 px-2 py-0.5 text-xs font-semibold text-ink">{count}</span>}
               </a>
             ))}
           </nav>

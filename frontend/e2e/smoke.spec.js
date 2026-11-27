@@ -55,6 +55,30 @@ test('sign in, submit a need, review the ranked result and approve it', async ({
   console.log(`match ran in mode ${mode}`);
   if (process.env.REQUIRE_LIVE_MODEL === 'true') expect(mode, 'REQUIRE_LIVE_MODEL=true: the model must have answered').toBe('AGENT');
 
+  const output = await page.evaluate(async (api) => {
+    const token = sessionStorage.getItem('issuermatch.token');
+    const id = location.hash.split('/').pop();
+    const headers = { Authorization: `Bearer ${token}` };
+    const [detailResponse, resultsResponse] = await Promise.all([
+      fetch(`${api}/match-runs/${id}`, { headers }),
+      fetch(`${api}/match-runs/${id}/results`, { headers }),
+    ]);
+    if (!detailResponse.ok || !resultsResponse.ok) throw new Error('Could not fetch live match output');
+    const detail = await detailResponse.json();
+    const results = await resultsResponse.json();
+    return {
+      executionMode: detail.run.executionMode,
+      rankedCount: results.length,
+      latencyMs: detail.run.latencyMs,
+      tokensIn: detail.run.tokensIn,
+      tokensOut: detail.run.tokensOut,
+      ranked: results.map(({ rank, investorName, explanation, dealBrief, suggestedDiligenceQuestions }) => ({
+        rank, investorName, dealBrief, analystText: explanation, suggestedDiligenceQuestions,
+      })),
+    };
+  }, API);
+  console.log(`live model output: ${JSON.stringify(output)}`);
+
   await expect(page.getByRole('alert').filter({ hasText: 'instruction-like content' })).toBeVisible();
   await page.getByText('Why this rank').first().click();
   await expect(page.getByText('Evidence:').first()).toBeVisible();

@@ -41,6 +41,12 @@ class DealController {
         return service.myQuestions(CurrentUser.get().id());
     }
 
+    @GetMapping("/issuer/questions/unanswered-count")
+    @PreAuthorize("hasRole('ISSUER')")
+    DealDtos.QuestionCount unansweredQuestionCount() {
+        return service.unansweredQuestionCount(CurrentUser.get().id());
+    }
+
     @PostMapping("/investor/matches/{matchResultId}/pass")
     @PreAuthorize("hasRole('INVESTOR')")
     @ResponseStatus(HttpStatus.NO_CONTENT)
@@ -58,7 +64,8 @@ class DealController {
     @PreAuthorize("hasRole('INVESTOR')")
     @ResponseStatus(HttpStatus.CREATED)
     DealDtos.Question ask(@PathVariable UUID needId, @Valid @RequestBody DealDtos.AskRequest request) {
-        return service.ask(needId, CurrentUser.get().id(), request.question());
+        return service.ask(needId, CurrentUser.get().id(), request.question(),
+                CurrentUser.fullName().orElse(null), CurrentUser.email().orElse(null));
     }
 
     @PostMapping("/funding-needs/{needId}/questions/{questionId}/answer")

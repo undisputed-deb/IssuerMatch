@@ -139,7 +139,7 @@ class TeamTest {
     }
 
     @Test
-    void anInvitedAnalystJoinsSharesTheDealsAsksAndPassesButCannotBindTheFirm() throws Exception {
+    void anInvitedAnalystJoinsSharesTheDealsAndAsksButCannotPassOrBindTheFirm() throws Exception {
         deal = new Deals(db, "EQUITY");
         Deals.Party firm = deal.investor("APPROVED");
         Person md = director(firm);
@@ -175,7 +175,9 @@ class TeamTest {
                 .andExpect(jsonPath("$.members[?(@.you==true)].orgRole").value("MANAGING_DIRECTOR"))
                 .andExpect(jsonPath("$.members[?(@.you==true)].email").value(md.email()));
 
-        pass(ana, firm).andExpect(status().isNoContent());
+        pass(ana, firm).andExpect(status().isForbidden());
+        mvc.perform(get("/investor/matches").with(md.auth())).andExpect(jsonPath("$[0].investorDecision").value(org.hamcrest.Matchers.nullValue()));
+        pass(md, firm).andExpect(status().isNoContent());
         mvc.perform(get("/investor/matches").with(md.auth())).andExpect(jsonPath("$[0].investorDecision").value("PASSED"));
         // the director still binds the firm, and the whole firm sees the offer
         offer(md, firm).andExpect(status().isCreated());

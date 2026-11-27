@@ -123,7 +123,7 @@ function Company({ name, company: c }) {
 /** The firm's offers on this deal, then the two choices: make an offer, or pass with an optional reason. */
 function Decision({ deal, offers, role, onOffer, onChange }) {
   const canOffer = role === 'MANAGING_DIRECTOR';
-  const canPass = role !== 'VIEWER';
+  const canPass = role === 'MANAGING_DIRECTOR';
   const [passing, setPassing] = useState(false);
   const [reason, setReason] = useState('');
   const [state, setState] = useState({ busy: false, error: null });
@@ -164,7 +164,7 @@ function Decision({ deal, offers, role, onOffer, onChange }) {
       </div>
       {!canOffer && (
         <p id={`offer-why-${deal.matchResultId}`} className="text-sm text-soft">
-          Only a Managing Director can submit an offer: it binds the firm.
+          Only a Managing Director can pass or submit an offer for this firm.
         </p>
       )}
       {canPass && passing && !passed && (

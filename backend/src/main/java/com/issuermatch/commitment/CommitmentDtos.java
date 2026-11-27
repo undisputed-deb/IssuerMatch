@@ -27,18 +27,25 @@ final class CommitmentDtos {
             // offer context. Investors must say why; stake is for equity deals only
             @DecimalMin("0.001") @DecimalMax("100") @Digits(integer = 3, fraction = 3) BigDecimal proposedStakePct,
             @Valid ProposedTerms proposedTerms,
-            @Size(max = 5000) String investmentRationale) {
+            @Size(max = 5000) String investmentRationale,
+            @Size(max = 5000) String offerLetter) {
 
         /** Same request, same string: 500000 and 500000.00 and different JSON whitespace all hash alike. */
         String canonical() {
             String base = "needId=" + needId + ";investorId=" + investorId + ";amount=" + amount.stripTrailingZeros().toPlainString();
-            if (proposedStakePct == null && proposedTerms == null && investmentRationale == null) {
+            String letter = offerLetter == null || offerLetter.isBlank() ? null : offerLetter.strip();
+            if (proposedStakePct == null && proposedTerms == null && investmentRationale == null && letter == null) {
                 return base; // unchanged, so keys saved before offers existed still replay
             }
             // JSON array: free text cannot pose as another field
-            return base + ";offer=" + JSON.writeValueAsString(Arrays.asList(
+            List<Object> fields = Arrays.asList(
                     proposedStakePct == null ? null : proposedStakePct.stripTrailingZeros().toPlainString(),
-                    proposedTerms, investmentRationale));
+                    proposedTerms, investmentRationale);
+            if (letter == null) {
+                return base + ";offer=" + JSON.writeValueAsString(fields);
+            }
+            return base + ";offer=" + JSON.writeValueAsString(Arrays.asList(
+                    fields.get(0), fields.get(1), fields.get(2), letter));
         }
     }
 
@@ -62,7 +69,7 @@ final class CommitmentDtos {
     record Response(UUID id, UUID needId, UUID investorId, BigDecimal amount, String status,
                     BigDecimal remainingCapacity, List<DecisionView> decisions, Instant createdAt,
                     BigDecimal proposedStakePct, JsonNode proposedTerms, String investmentRationale,
-                    String issuerDecision) {}
+                    String issuerDecision, String offerLetter) {}
 
     enum Status {
         ACCEPTED, PENDING_REVIEW, REJECTED

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from './api.js';
 import { Button, ErrorBox, Field, Input, control, money, number } from './ui.jsx';
 
-const EMPTY = { amount: '', stake: '', valuation: '', interest: '', tenor: '', conditions: '', rationale: '' };
+const EMPTY = { amount: '', stake: '', valuation: '', interest: '', tenor: '', conditions: '', rationale: '', offerLetter: '' };
 
 /** "Match & Submit Offer". A native modal dialog, so focus is trapped and Escape closes it. */
 export default function OfferDrawer({ deal, investorId, onClose, onSent }) {
@@ -32,6 +32,7 @@ export default function OfferDrawer({ deal, investorId, onClose, onSent }) {
       proposedStakePct: equity ? number(form.stake) : null,
       proposedTerms: Object.keys(proposed).length ? proposed : null,
       investmentRationale: form.rationale,
+      offerLetter: form.offerLetter.trim() || null,
     };
     // Same offer sent again (say the network dropped) reuses the key, so it cannot be recorded twice.
     const body = JSON.stringify(offer);
@@ -68,6 +69,11 @@ export default function OfferDrawer({ deal, investorId, onClose, onSent }) {
           </Field>
           <Field label="Why you like this company" wide>
             <textarea className={`${control} py-2`} rows={5} required maxLength={5000} value={form.rationale} onChange={set('rationale')} />
+          </Field>
+          <Field label="Personal offer letter to the issuer (optional)" wide>
+            <textarea className={`${control} py-2`} rows={5} maxLength={5000} value={form.offerLetter} onChange={set('offerLetter')}
+              aria-describedby="offer-letter-help" />
+            <span id="offer-letter-help" className="mt-1 block text-sm text-soft">Write a note to the issuer on behalf of your firm.</span>
           </Field>
           <p className="text-sm text-soft sm:col-span-2">The issuer sees your firm, contact, amount, terms and reason. Risk checks run before the offer is accepted.</p>
           <div className="sm:col-span-2">

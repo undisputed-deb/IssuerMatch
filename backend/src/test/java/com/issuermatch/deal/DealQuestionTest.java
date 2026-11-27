@@ -55,13 +55,25 @@ class DealQuestionTest {
     void anInvestorAsksTheIssuerAnswersAndBothSeeTheThread() throws Exception {
         deal = new Deals(db, "EQUITY");
         Deals.Party ivy = deal.investor("APPROVED");
+        db.update("INSERT INTO investor_members(investor_id,user_id,email,display_name,org_role) VALUES (?,?,?,'Ivy Chen','MANAGING_DIRECTOR')",
+                ivy.investorId(), ivy.user(), "ivy.chen@example.test");
         String q = idOf(ask(Auth.investor(ivy.user()), "What is current revenue?").andExpect(status().isCreated())
-                .andExpect(jsonPath("$.answer").value(org.hamcrest.Matchers.nullValue())));
+                .andExpect(jsonPath("$.answer").value(org.hamcrest.Matchers.nullValue()))
+                .andExpect(jsonPath("$.askedByName").value("Ivy Chen"))
+                .andExpect(jsonPath("$.askedByEmail").value("ivy.chen@example.test")));
+
+        mvc.perform(get("/issuer/questions/unanswered-count").with(Auth.issuer(deal.issuerUser)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.count").value(1));
+        db.update("DELETE FROM investor_members WHERE investor_id = ? AND user_id = ?", ivy.investorId(), ivy.user());
 
         mvc.perform(get(path()).with(Auth.issuer(deal.issuerUser))).andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].investorFirm").value(org.hamcrest.Matchers.startsWith("Deal Fund")))
-                .andExpect(jsonPath("$[0].question").value("What is current revenue?"));
+                .andExpect(jsonPath("$[0].question").value("What is current revenue?"))
+                .andExpect(jsonPath("$[0].askedByName").value("Ivy Chen"))
+                .andExpect(jsonPath("$[0].askedByEmail").value("ivy.chen@example.test"));
         answer(Auth.issuer(deal.issuerUser), q, "About 2M a year.").andExpect(status().isOk());
+        mvc.perform(get("/issuer/questions/unanswered-count").with(Auth.issuer(deal.issuerUser)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.count").value(0));
         mvc.perform(get(path()).with(Auth.investor(ivy.user()))).andExpect(jsonPath("$[0].answer").value("About 2M a year."))
                 .andExpect(jsonPath("$[0].answeredAt").isNotEmpty());
 
@@ -137,6 +149,7 @@ class DealQuestionTest {
         answer(Auth.admin(), q, "admin answer").andExpect(status().isForbidden());
         answer(Auth.issuer(UUID.randomUUID()), q, "wrong issuer").andExpect(status().isNotFound());
         mvc.perform(get(path()).with(Auth.noRoles())).andExpect(status().isForbidden());
+        mvc.perform(get("/issuer/questions/unanswered-count").with(Auth.investor(ivy.user()))).andExpect(status().isForbidden());
     }
 
     @Test

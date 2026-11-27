@@ -1,74 +1,105 @@
 ## Goal
-IssuerMatch: Spring Boot + Kafka + Spring AI agent that ranks investors for issuer funding needs (synthetic data only).
+IssuerMatch: two-sided platform where companies (issuers) raise money and investor firms are ranked by a Gemini agent,
+approved by staff, then question, offer and get an answer. Portfolio project, synthetic data only.
+Repo root `/Users/Deb/Downloads/IssuerMatcher/IssuerMatch`, GitHub `undisputed-deb/IssuerMatch`, branch `main`.
 
-## Done (all committed + pushed, author = user only, NO Co-Authored-By; commit+push after each task)
-- Setup: .gitignore, backend/.env.example, gitleaks pre-commit (.githooks), Boot 4.1.3 skeleton, health, error format.
-- DB: Flyway V1-V8 (issuers, investors, mandates, funding_needs, match_runs/results, audit_log, outbox+processed_events, investor_deals). CHECKs, FKs, commented indexes, RLS on every table (test guards it). Applied to real Supabase; synthetic seed loaded there (50 investors, 20 issuers, 32 needs).
-- API: CRUD issuers, investors (+nested mandates), funding-needs (POST -> 202, GET list/one). Paged (max 100), safe sort (400 on bad field), unknown JSON fields rejected, DTOs only.
-- Perf (docs/PERFORMANCE.md): N+1 52 -> 3 statements (@BatchSize); idx_mandates_match 17.9ms -> 0.83ms on 200k rows.
-- Kafka: docker-compose.yml (Kafka 3.9.0 KRaft + UI on :8089, localhost-only). Topics funding-need.submitted, match.requested, match.completed, audit.events + .DLT for consumed ones.
-- Outbox: OutboxService (MANDATORY tx) + OutboxPublisher (poll, SKIP LOCKED). ProcessedEvents guard. MatchRequestConsumer (funding-need.submitted -> match_run + match.requested outbox event), idempotent. Retry 3x backoff then <topic>.DLT (name pinned; Spring Kafka 4 default is -dlt). EventPipelineTest proves dup event = 1 run, poison -> DLT, failing event retried -> DLT.
-- Agent building blocks: LlmClient interface (+ FakeLlmClient in tests), FitScorer (pure, 0-100, unit tested), MatchingTools with 4 read-only @Tool methods: searchInvestorsByMandate, getInvestorHistory, getMarketContext, scoreFit.
-- Agent (tasks 29-32): SpringAiLlmClient (Gemini 2.5 flash via Spring AI, key from GEMINI_API_KEY), RunToolbox wraps the 4 tools (call budget 12, records every call), MatchAgent (60s timeout, untrusted description fenced + angle brackets escaped), ModelOutput validator (strict JSON, investors must come from this run's search AND be scored, citedTools must be real, max 5) with ONE repair retry then FAILED. MatchRunService persists: scores/ranks from Java (scoreFit), tool_calls jsonb, tokens, latency; status PENDING_REVIEW. MatchRunConsumer (match.requested): atomic claim REQUESTED->RUNNING = idempotency; no DB tx held during LLM call; AgentFailure -> FAILED run + match.completed event. MatchReviewService: approve/reject only from PENDING_REVIEW (409 otherwise), approve -> need MATCHED, reject -> need SUBMITTED. Endpoints: GET /match-runs, /match-runs/{id} (with toolCalls), /match-runs/{id}/results, POST /match-runs/{id}/approve|reject.
-- Live run verified with the real key (Supabase data): PENDING_REVIEW, 3 tool calls, 4210 in / 318 out tokens, ~7s, injection text in description ignored.
-- Fixes: retry shares ONE tool budget + ONE deadline (repair prompt carries earlier tool results); V9 started_at + StuckRunReaper (RUNNING > app.agent.stuck-after=5m -> FAILED + match.completed); complete()/fail() only act on RUNNING runs (late result cannot resurrect a reaped run).
-- Task 33: V10 commitments + idempotency_keys. POST /commitments needs Idempotency-Key header (^[A-Za-z0-9._:-]{1,128}$). IdempotencyService: key row inserted in SAME tx as the work; concurrent same-key callers block on the unique index then replay (header Idempotent-Replayed: true); same key + different body -> 422; failed work rolls the key back (retry allowed); hash is over a canonical string (whitespace/500000 vs 500000.00 equal). Only investors in an APPROVED run's results can commit (409 otherwise). Test: 50 parallel identical requests -> 1 row; mutation-checked (random key per request makes it fail).
-- Phase 4 auth DONE (163 tests green): security pkg. SecurityConfig = stateless JWT resource server; JwtDecoder from SUPABASE_JWKS_URI, ES256+RS256 only (project key is ES256 P-256), iss = SUPABASE_URL/auth/v1, aud=authenticated; app.auth.* has NO defaults (fail fast). Roles from app_metadata.roles only (SupabaseJwtConverter). CurrentUser.get() = caller. 401/403 in our JSON format (entry point + GlobalExceptionHandler). Default deny; only /health public. Role gates (@PreAuthorize) on controllers, ownership in services (issuer gets 404 for others' data). Matrix in docs/AUTH.md. V11: idempotency_keys PK (actor, key), commitments.created_by, match_runs.requested_by; reviewed_by set from token. RunToolbox.Policy: scoreFit bound to run's need (prompt-injection IDOR guard). AuditService (audit_log + audit.events via outbox, same tx, clock_timestamp, socket IP only, no free text) on issuer CRUD, need submit, approve/reject, commitment create.
-- Live smoke vs real Supabase: V9-V11 applied; no token/garbage/real anon key -> 401. NOT yet tested with a real user token (needs a user + roles in dashboard).
-- Task 34 DONE: capacity. CommitmentService.takeCapacity = ONE atomic `UPDATE funding_needs SET remaining_capacity = remaining_capacity - ?, version = version + 1 WHERE id = ? AND remaining_capacity >= ? RETURNING remaining_capacity` (row lock; second concurrent commit re-checks against the first's committed value). Over capacity -> 409; response now has remainingCapacity; failure later in the tx releases it; replay does not take capacity twice. CommitmentCapacityTest: 2 investors race for last 700k -> one 201 + one 409; 20x100k against 1M -> exactly 10 accepted, remaining 0. Mutation-checked (read-then-write version fails both race tests).
-- Tasks 35-36 DONE (dynamic risk engine, docs/RISK.md): RiskRule interface, 5 @Component rules (ticket-range, concentration, velocity, capacity, duplicate), RiskEngine (BLOCK > FLAG > PASS, crashing rule = FLAG), thresholds in risk_rule_config (V12), admin API GET/PUT /admin/risk-rules (ADMIN, validated, audited), risk_decisions stores each result + params snapshot. CommitmentService locks the need row (FOR UPDATE) then evaluates. PASS 201 ACCEPTED, FLAG 202 PENDING_REVIEW (capacity HELD), BLOCK 422 REJECTED (stored, replayable, no capacity). Review: POST /commitments/{id}/approve|reject, four-eyes (creator cannot review), reject releases capacity. GET /commitments/{id} shows decisions. (Earlier limit about velocity/duplicate races is FIXED, see below.)
-- Gap fixes: (a) CommitmentService also locks the investor row (`FOR NO KEY UPDATE`, order need -> investor) so parallel requests across needs can't slip under velocity/duplicate/concentration (burst test: was 10 clean passes of 15, now 4/5/6). (b) FAILED/reaped runs set need back to SUBMITTED; POST /funding-needs/{id}/match re-requests after FAILED/REJECTED run (atomic claim, 409 otherwise, owner or staff). (c) IdempotencyCleanup removes keys older than app.idempotency.ttl=24h (V13 index).
-- Task 37 DONE: CommitmentEvents publishes commitment.requested (always) + accepted/rejected (on decision or review) via outbox; CommitmentLedgerConsumer writes commitment_events (V14, event_id PK, no FKs on purpose), validates payload/topic/type, bad -> <topic>.DLT.
-- 223 tests green; app boots on real Supabase with V1-V14.
-- Test admin on real Supabase: admin@issuermatch.test (password in git-ignored backend/.env.admin; delete the user when done). Created via SQL into auth.users/identities, roles in app_metadata. Real login + live API call verified (ES256, roles ADMIN, 200s). scripts/api.sh logs in and calls the API.
-- Task 38 DONE: V15 dead_letters, DeadLetterConsumer (pattern .*\.DLT, own container factory that retries forever, never DLTs itself), GET /admin/dead-letters[/{id}], POST /admin/dead-letters/{id}/replay (ADMIN, once, only Topics.CONSUMED, via outbox, audited).
-- Task 39 DONE: V16, ReconciliationService (REPEATABLE_READ; CAPACITY_MISMATCH, MISSING_EVENT after grace 1m, DUPLICATE_EVENT, UNEXPECTED_EVENT, AMOUNT_MISMATCH), job every 5m, 7d report retention, GET /admin/reconciliation/latest, POST /run. Seeded-mismatch tests.
-- Task 40 DONE: scripts/load/{run.sh,seed.sql,commitments.js} + compose profile "load" (Postgres :5433). docs/LOAD_TEST.md: 619 req/s, p95 133ms, 0 errors; found outbox bottleneck -> batched publisher (500), scheduler pool 4, ledger concurrency 3; backlog 105,334 -> 439, catch-up >10min -> 27s, reconciliation 1499 -> 0.
-- Real Supabase boot with V1-V16 verified: reconciliation 0 mismatches, 0 dead letters. run.sh refuses to start if :8080 is busy and waits for app shutdown before removing containers.
-- Phases 5-9 of the original spec DONE: security (SBOM scan + pins, hostile input fixes, Bucket4j rate limits, CORS/headers, injection flags + output checks, log hygiene + correlation ids, required secrets, 503 on DB down), SECURITY_AUDIT.md (13 findings), retention cleanup (V18), actuator + metrics, React frontend (frontend/, e2e scripts/e2e.sh), Dockerfiles + compose profile "app" (`docker compose --env-file backend/.env --profile app up --build`), GitHub Actions CI (green on 67f690c) + Dependabot (PRs open, unmerged), README.md, INTERVIEW_NOTES.md, docs/SECURITY.md.
-- (End of original spec: 281 tests. Current counts are in the Phase 5 line below.)
-- GitGuardian alert handled: no real secret was ever committed (gitleaks full history clean, none of the .env values in any commit). Credential-shaped test literals (fake `AQ.` key text, JWT-shaped strings, Basic auth `admin:admin`) are now built at runtime so scanners cannot flag them.
+**Current mission: prove it works end to end with REAL Gemini calls, fix what breaks, reach the finish line below.**
 
-- Two-sided platform spec (2026-11-26), ALL 5 PHASES DONE. PHASE 1 DONE (302 backend tests, frontend build ok, real signup verified + test users deleted):
- INVESTOR role; POST /auth/signup (signup/ pkg, SupabaseAuthAdminClient real=RestSupabaseAuthAdminClient, test fake=support/FakeSupabaseAuthClient; key = SUPABASE_SERVICE_ROLE_KEY else SUPABASE_SECRET_KEY; email auto-confirmed = no ownership proof, documented); signup rate limit 5/min/IP + 30 global; V19 investors.owner_user_id UNIQUE; GET/PUT /investors/me (name,type,region only until Phase 2); MatchVisibility = single definition of investor visibility (APPROVED run + owned profile); GET /commitments?status= for staff; frontend: Login with Create account, App.jsx areaOf() staff/issuer/investor, pages Company, Profile, RiskReview, DeadLetters, Reconciliation; e2e/signup.spec.js (SIGNUP_E2E=1, creates+deletes real users).
- PHASE 2 DONE (314 tests, build ok, browser tests ok): V20 investors profile (type column renamed investor_type; BANK->PRIVATE_CREDIT, ANGEL->ANGEL_SYNDICATE; new fields; currency; profile_completed); PUT/GET /investors/me takes full ProfileRequest incl. 1-10 mandates (replaces all). V21 funding_needs intake (currency, company_stage, target_close_date, use_of_funds jsonb, min_ticket_size, hard_constraints jsonb typed HardConstraints, instrument_terms jsonb). InstrumentTerms sealed (EquityTerms/DebtTerms/ConvertibleTerms) with custom tools.jackson reader on a "type" discriminator; MEZZANINE uses DEBT terms; terms optional in API. common/Currencies: 10 supported ISO codes + SYNTHETIC static FX to USD. Mandate tickets are in the investor's currency (convert in Phase 3).
- PHASE 3 DONE (335 tests, build ok, live Gemini verified: execution_mode AGENT, semantic search + real embeddings): images -> pgvector/pgvector:pg17 (tests, compose app+load); V22 (vector ext, investors.thesis_embedding + hnsw, funding_needs.embedding, match_runs.execution_mode/degraded_reason, match_results.score_breakdown/deal_brief/suggested_diligence_questions, llm_daily_usage). matching/embedding (EmbeddingClient, gemini-embedding-001 768d, Embeddings indexer every 15s; FakeEmbeddingClient in tests). FitScorer: mandateFit25 ticketFit25 regionFit15 riskFit10 trackRecord10 thesisAlignment15 + disqualifiers (HardConstraints + min ticket); ScoringService converts to USD. scoreFit now takes investorIds list (batch, keeps 12-call budget); 5th tool searchInvestorsByThesisSemantic (need-bound). ModelOutput: up to 10, requires dealBrief + 3-5 questions, no other investor names in them, disqualified cannot be ranked. MatchExecutor: Resilience4j breaker + daily token budget -> DeterministicMatcher (DEGRADED_DETERMINISTIC). GET /investor/matches (InvestorFeed, no explanation/rank). Risk rules FX: RiskContext.amountUsd, ticket ranges in need currency. UI: InvestorDeals, score.jsx Breakdown, RunDetail.
- Note: searchInvestorsByMandate param is ticketSizeUsd. Test props: breaker minimum-calls AND window huge, embeddings initial-delay 1h. Old seeded investors (Supabase, old compose volume) have no thesis -> thesisAlignment 0 until profiles saved or volume reset (`docker compose --profile app down -v`).
- PHASE 4 DONE (349 tests, build ok, e2e/deal.spec.js passed with real Supabase + Gemini, test users deleted): V23 offer columns on commitments (proposed_stake_pct, proposed_terms_json, investment_rationale, investor_decision) + match_results (investor_decision INTERESTED|PASSED, pass_reason, decided_at; spec's "PASS_REASON" = pass_reason column). V24 deal_questions (RLS). POST /commitments allows INVESTOR: own profile only, rationale required, stake only for EQUITY, unmatched -> 404, risk rule reasons hidden from investor; idempotency hash covers offer fields (old hashes unchanged). deal/ package: GET /funding-needs/{id}/offers (owner issuer sees non-REJECTED, staff all), GET /investor/offers, POST /investor/matches/{matchResultId}/pass (409 if live offer), questions GET/POST + /{qid}/answer (50 per investor per need). UI: deal.jsx (Offers, Thread), OfferDrawer.jsx, InvestorDeals decision panel, Needs "Offers and questions", RunDetail + RiskReview show offers.
- PHASE 5 DONE (350 tests, 94.3% lines / 85.4% branches, 48 endpoints, build ok, browser smoke + deal flow ok, chaos.sh ok, dependency scan 0 findings): platform/TwoSidedPlatformFlowTest (whole flow via API + outsiders attack it; mutation-checked), chaos.sh step 1 now expects DEGRADED_DETERMINISTIC fallback, README/AUTH/SECURITY/SECURITY_AUDIT/RISK/INTERVIEW_NOTES updated.
-- 3-phase upgrade spec (2026-11-26). Rules: after EACH phase run tests + build, commit (author = user only), push, STOP and report. ALL 3 PHASES DONE. User: NO live Gemini calls while building Phases 2/3 (./mvnw test + npm run build only; live browser runs after quota resets).
-- UPGRADE PHASE 1 DONE (356 tests, 94.4% lines / 85.5% branches, 49 endpoints, build ok): prompt asks investor->founder questions, exactly 3 (validator: <=30 words, rejects "your thesis/mandate"), dealBrief 2 sentences <=400 chars; GET /investor/questions replaces per-deal polling (Thread fetches, ThreadView renders); scripts/e2e-cleanup.{sh,sql} + e2e-delete-users.mjs run from Playwright global teardown and e2e.sh EXIT trap; `scripts/e2e.sh accounts` runs signup+deal; fixed 3px mobile overflow on RunDetail (long tool name). E2E rows deleted from the local app DB; Supabase had none.
+## Finish line (proposed; the user can change it)
+- [ ] CI green on the latest commit, `images` job included.
+- [ ] Local app stack rebuilt on latest code, healthy, database at Flyway V28.
+- [ ] Live browser tests (signup, deal, team) pass, and the API log shows the **model** answered every match run
+      (no "without the model", no "Model output rejected"); thesis and need embeddings stored.
+- [ ] `REQUIRE_LIVE_MODEL=true scripts/e2e.sh` passes.
+- [ ] Live output meets the prompt rules (test plan step 5).
+- [ ] `scripts/chaos.sh` and `scripts/dependency-scan.sh` pass (neither re-run since the upgrades).
+- [ ] Manual checklist (step 7) done, no leftover `E2E%` rows or `e2e-*` accounts.
+- [ ] README "Measured results" updated with the new live numbers; this file updated; everything pushed.
 
-- Gotcha (2026-11-26): Gemini free tier allows 20 generate requests/day for gemini-2.5-flash and one match run uses several. When spent (HTTP 429) matching falls back to DEGRADED_DETERMINISTIC, and the smoke test still passes. Check the app log for "without the model" before claiming a live model check.
-- UPGRADE PHASE 2 DONE (376 tests, 94.6% lines / 86.1% branches, 53 endpoints, build ok, UI checked with a mocked API at 375/1280; NO live model or browser e2e run): V25 issuer CompanyProfile (@Embeddable record, API shape `profile:{...}`, PUT without profile keeps it) + issuers.verified; V26 participation_role/deployment_status/verified, mandates.target_stages; admin/ package PATCH /admin/{issuers,investors}/{id}/verify (CORS allows PATCH); FitScorer now mandate25 ticket20 region10 risk10 track10 thesis10 stage10 participation5, paused = disqualified + filtered from both searches and the fallback; V27 issuer_decision on commitments, IssuerDecisionService, topic commitment.declined, ledger type DECLINED, reconciliation and exposure ignore declined; investor sees company card (no runway/data room), issuer sees investor summary on offers. Also: ranking capped at 5 (MatchRunService.MAX_RESULTS), explanation <=500 chars 1-2 sentences, wider inverted-question regex, cleanup removes "Browser test%", smoke asserts AGENT only with REQUIRE_LIVE_MODEL=true.
-- Follow-ups + UPGRADE PHASE 3 DONE (388 tests, 95.0% lines / 86.0% branches, 60 endpoints, build ok, UI + nginx rule checked with mocks; NO live model, browser e2e or local app rebuild): verified badge revoked on name/website change (VerificationService.revokeAfterIdentityChange, audit *_VERIFICATION_REVOKED); CI uploads surefire/failsafe reports on failure; approved matched investors now see runway + data room; admin "Verification" page; V28 investor_members + investor_invites with owner backfill; team/ package (InvestorMembershipService is the only investor lookup; owner fallback only for firms with no member rows); roles VIEWER/ANALYST/MANAGING_DIRECTOR enforced server side; invites (SHA-256 digest, 7 days, preview public + rate limited, accept needs matching email); signup takes optional inviteToken; demoted/removed member's open invites revoked; UI /invite/:token, Team tab, role badge, gating; nginx hides /invite/ from access log. Mutation-checked (owner fallback, firm lock, viewer ask).
-- Browser coverage + outage fix (390 tests, 95.0% / 86.0%, 6/6 browser tests pass offline): e2e/team.spec.js (invite -> analyst joins/asks/403 on offer; offer decline releases capacity, second accept; reconciliation clean), e2e/helpers.js; `scripts/e2e.sh offline` (own kafka-e2e :9094, postgres-load, API :8081, web :5174, dummy key + dead proxy, never touches the app stack); docker-compose.offline.yml for a no-model app stack. FIXED: with Gemini unreachable the fallback matcher retried a failing need embedding once per candidate (minutes per run); Embeddings now waits app.embeddings.retry-after (1m) per failed need. New Gemini key verified with ONE chat request (HTTP 200) on 2026-11-26.
+Not part of the finish line unless the user asks: email confirmation on signup, deployment, second security audit,
+repeat load test, merging Dependabot PRs.
+
+## Done (all committed and pushed)
+- Original build (phases 0-9): CRUD, Kafka outbox + idempotent consumers + DLT, agent with read-only tools, risk engine,
+  idempotent commitments, reconciliation, Supabase JWT auth, rate limits, React UI, Docker, CI, load test, security audit.
+- Two-sided platform (phases 1-5): roles ISSUER/INVESTOR/ANALYST/ADMIN, public signup, investor profiles, semantic
+  search (pgvector), deterministic fallback matcher, offers, passes, private Q&A.
+- Upgrade phase 1 (`433fc4c`): diligence questions go investor -> founder, batched investor Q&A, browser test cleanup.
+- Upgrade phase 2 (`1c8457a`): company profile + Verified badge, investor role/deployment/mandate stages, new score
+  weights (mandate25 ticket20 region10 risk10 track10 thesis10 stage10 participation5), issuer accept/decline with
+  capacity release (`commitment.declined`), top 5 ranked, shorter analyst text.
+- Upgrade phase 3 (`4b98aee`): investor firm teams (MANAGING_DIRECTOR/ANALYST/VIEWER), copy-link invites, badge revoked
+  on name/website change, admin Verification page, CI uploads test reports on failure, investors see runway + data room
+  only when approved.
+- `edccaa9`: browser tests for team invite + offer loop, `scripts/e2e.sh offline`, `docker-compose.offline.yml`, fix for
+  minutes-long fallback matching when Gemini is unreachable.
+
+Last verified on `edccaa9`: `./mvnw test` 390 pass (95.0% lines / 86.0% branches), frontend build ok, 60 endpoints,
+`scripts/e2e.sh offline` 6/6 pass.
 
 ## In progress
-- nothing
+- Follow-up implemented: questions retain asker name/email; issuers get a live unanswered-question badge; only Managing
+  Directors can pass or submit offers; offers support an optional custom letter. Added V29; do not call Gemini.
+- Verification: `./mvnw test` 390 pass; `npm run build` pass; both local Docker builds pass. `gh` is unavailable, so the
+  latest `images` CI log cannot be inspected here. No live Gemini calls made.
+- Rebuild local compose stack with V29, verify health and clean out any existing E2E rows/accounts if present. Leave
+  localhost:5173 ready for the user's manual checklist.
+- Local stack is rebuilt and healthy at V29; API `/health` is UP and web returns HTTP 200. Local E2E row counts are
+  zero; Supabase cleanup found zero `e2e-*` accounts. `foodwaste-db` remains running and untouched.
+- User reviewed the manual checklist and approved committing the changes.
+- Spring AI retries are capped at one attempt; 429 and client errors do not retry. `e2e.sh accounts` waits 60 seconds
+  between specs. Spring MVC request body logging is pinned to INFO after `LogHygieneTest` caught DEBUG body output.
+- `./mvnw test` passed (390 tests). Both local Docker builds passed. `gh` is unavailable, so the `images` CI log could
+  not be inspected.
+- Live signup passed 2/2, deal passed 1/1, and team passed 2/2. Investor thesis and need vector counts rose during live
+  flows. Two live chat runs succeeded. No `without the model`, `Could not embed`, or LLM failure lines appeared; test
+  cleanup removed the E2E accounts and rows.
+- Large-pool smoke passed in AGENT mode and printed the full model output: 2 ranked firms, 9,519 ms, 4,602 input tokens,
+  575 output tokens. Each result had 3 diligence questions. The test delayed background indexing of its 50 seeded theses
+  to protect quota; on-demand need embedding remained enabled.
+- Chaos and dependency scans passed. Chaos verified deterministic fallback, Kafka and database recovery, and no secrets
+  in its log. OSV found no issues in 181 backend or 88 frontend packages.
+- The shared stack is healthy again: API health UP on 8080, web on 5173, local DB V28. Cleanup found zero E2E rows
+  and zero remaining test accounts. `foodwaste-db` remains running. The user should complete step 7 before step 8.
 
 ## Next steps
-1. The user may rebuild now: `docker compose --env-file backend/.env --profile app up --build -d` (applies V25-V28; 0 Gemini calls expected at startup: no pending theses, runs or events). Calls start when a profile is saved with a new thesis or a need is submitted / re-matched. Add `-f docker-compose.yml -f docker-compose.offline.yml` for none (config validated, not yet run). The running containers are still the Phase 1 build until then.
-2. Live model checks only when the user agrees: `scripts/e2e.sh accounts`, `REQUIRE_LIVE_MODEL=true scripts/e2e.sh` (free tier is 20 requests/day).
-3. Open: signup has no email verification (documented pre-production requirement; user chose to leave it off for local testing). No browser step for the admin Verification screen. Load/perf numbers predate the upgrades; no second security audit.
-4. Seen, not changed: spring.ai.retry defaults to 10 attempts; the one-partition match consumer means one slow run delays the next.
-
-## Standing rules
-- Rules: Jackson 3 only; RLS on every new table; Testcontainers Kafka 3.8.0; no live Gemini/Supabase Auth in tests; no credential-shaped literals; Maven deps in LAST </dependencies>.
-
+1. Commit and push the reviewed changes; check CI when GitHub CLI access is available.
+2. No additional Gemini calls. Update README measured results only if the reviewed run metrics change.
 
 ## Decisions & gotchas
-- Never print .env values. Names only. SUPABASE_SECRET_KEY is the signup admin key fallback (SUPABASE_SERVICE_ROLE_KEY preferred).
-- Tests: Docker Desktop must run (`open -a Docker`); use dangerouslyDisableSandbox for mvn test/run. Test Kafka image must be apache/kafka:3.8.0 (3.9.0 fails in Testcontainers: advertised.listeners 0.0.0.0). Compose uses 3.9.0 fine.
-- Tests share one DB container per JVM: tests that COMMIT (EventPipelineTest) leave rows; other tests must use relative counts.
-- Run app: `cd backend && ./mvnw spring-boot:run` (reads backend/.env). Seed: add `-Dspring-boot.run.profiles=seed` (idempotent; slow over network, wait for "Synthetic data created").
-- Tests: every MockMvc request is ADMIN by default (TestInfraConfig.adminByDefault). Use .with(Auth.issuer(uuid)/Auth.analyst()/Auth.noRoles()/Auth.anonymous()) to test other callers. Tokens go through the real converter; signature checks have their own test (JwtValidationTest, local EC key).
-- Maven gotcha: new <dependency> blocks must go in the LAST </dependencies> (the first is inside dependencyManagement).
-- Tests never call Gemini: IntegrationTest sets a dummy key and TestInfraConfig provides a @Primary lenient FakeLlmClient (use fake.when(predicate, turn) keyed on the prompt). Tests that COMMIT rows must clean up after themselves (MatchFlowTest, MatchAgentRetryTest do).
-- Needs Kafka up for the app to be quiet: `docker compose up -d kafka`.
-- Boot 4: Jackson 3 (tools.jackson.*), starters spring-boot-starter-webmvc/-kafka/-flyway, test annotations in org.springframework.boot.webmvc.test.autoconfigure.
-- Auth is built (see docs/AUTH.md). Issuer owner = caller; only ADMIN may name another owner.
-- If DB connect fails (no IPv6) use Supabase pooler string; username format differs. Do not guess. Direct host works on this machine.
-- Pins: Boot 4.1.3, Spring AI 2.0.3 (Gemini starter), Postgres 17, Java 21.
-- Coverage (JaCoCo not in pom): `V=0.8.16; ./mvnw org.jacoco:jacoco-maven-plugin:${V}:prepare-agent test org.jacoco:jacoco-maven-plugin:${V}:report` (braces: zsh eats `$V:report`). Old target/site/jacoco files go stale.
-- Test files must not contain credential-shaped literals (build them at runtime). GitGuardian also scans pushes, gitleaks pre-commit only scans staged content.
+### Working rules (from the user)
+- Commit author = the user only (git config is set). **No Co-Authored-By or tool attribution.** Prefixes
+  feat/fix/test/docs/chore/refactor/security. Commit and push right after each finished task.
+- Never print, log, commit or copy any `.env` value. Never put secrets in this file.
+- Test before saying done. Say when something is a guess. Ask when intent is unclear. Keep it simple.
+- Stack pins: Java 21, Spring Boot 4.1.3, Jackson 3 (`tools.jackson.*` only), Spring AI 2.0.3, Postgres 17,
+  React/Vite/Tailwind. DB changes only as new sequential Flyway migrations (next: V29), RLS on every new table.
+- `./mvnw test` must never call live Gemini or Supabase (fakes exist). Testcontainers Kafka stays `apache/kafka:3.8.0`
+  (3.9.0 fails there; compose uses 3.9.0). No credential-shaped literals in tests. New Maven dependencies go in the LAST
+  `</dependencies>` block. Keep `investors.owner_user_id`.
+- Update this file after each task.
+
+### Product decisions the user approved
+- Investor lookup only through `InvestorMembershipService`. The owner column counts only for a firm with NO member rows,
+  so a removed owner cannot return.
+- Invite page cannot prefill the email (preview returns it masked); signup takes `inviteToken` and refuses other
+  addresses. Demoted or removed members lose their open invites.
+- Declined offer keeps `status = ACCEPTED` with `issuer_decision = DECLINED`; still counts for velocity and duplicate.
+- Email confirmation stays OFF for local testing. Known risk, documented: whoever holds an invite link and registers the
+  invited address first can join. Required before real users.
+
+### Commands and traps
+- Tests: `cd backend && ./mvnw test` (Docker needed). Coverage:
+  `V=0.8.16; ./mvnw org.jacoco:jacoco-maven-plugin:${V}:prepare-agent test org.jacoco:jacoco-maven-plugin:${V}:report`
+  (braces matter in zsh; old `target/site/jacoco` files go stale). Frontend: `cd frontend && npm run build`.
+- A sandboxed agent needs permission for Docker, network and local ports.
+- All MockMvc test requests are ADMIN by default; use `Auth.issuer/investor/analyst/anonymous`. Tests that commit rows
+  must clean them up.
+- Staff test account `admin@issuermatch.test` is real in Supabase (password in `backend/.env.admin`).
+- Browser tests create real Supabase users. After a killed run: `scripts/e2e-cleanup.sh`.
+- The Supabase Postgres database is separate from the compose one and is probably behind on migrations. Running the
+  backend directly (`./mvnw spring-boot:run`) migrates it: ask the user first.
+- An unrelated container `foodwaste-db` runs on this machine: leave it alone.
+- Seen, not changed: `spring.ai.retry` defaults to 10 attempts; the single-partition match consumer lets one slow run
+  delay the next.
+- More: README.md, docs/AUTH.md, docs/RISK.md, docs/SECURITY.md, SECURITY_AUDIT.md, INTERVIEW_NOTES.md.

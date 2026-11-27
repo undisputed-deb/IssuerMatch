@@ -38,6 +38,10 @@ export function Offers({ needId, canDecide = false, onDecided }) {
             <p className="text-sm text-soft">Offered {when(o.createdAt)}</p>
             <p className="text-sm break-words"><b>Terms:</b> {terms(o)}</p>
             <p className="max-w-prose text-sm whitespace-pre-wrap break-words"><b>Why they like it:</b> {o.investmentRationale ?? 'Recorded by staff, no rationale.'}</p>
+            {o.offerLetter && <div className="max-w-prose border-l-2 border-brand pl-3">
+              <p className="text-sm font-semibold">Letter from the Managing Director</p>
+              <p className="whitespace-pre-wrap break-words">{o.offerLetter}</p>
+            </div>}
             {canDecide && offerStatus(o) === 'OFFER_AWAITING' && (
               <Decide offer={o} onDone={async () => { await offers.reload(); await onDecided?.(); }} />
             )}
@@ -165,6 +169,10 @@ export function ThreadView({ needId, mode, thread, suggestions = [], canAsk = tr
           {thread.data?.map((q) => (
             <li key={q.id} className="border-l-4 border-rule pl-3">
               <p className="text-sm text-soft">{mode === 'investor' ? 'Your firm' : q.investorFirm} · {when(q.createdAt)}</p>
+              {mode === 'issuer' && <p className="text-sm text-soft">
+                Asked by <span className="font-medium text-ink">{q.askedByName || 'Investor team member'}</span>
+                {q.askedByEmail && <> · <a className="underline hover:text-ink" href={`mailto:${q.askedByEmail}`}>{q.askedByEmail}</a></>}
+              </p>}
               <p className="max-w-prose whitespace-pre-wrap break-words font-medium">{q.question}</p>
               {q.answer && <p className="mt-1 max-w-prose whitespace-pre-wrap break-words">{q.answer}</p>}
               {!q.answer && (mode === 'issuer'

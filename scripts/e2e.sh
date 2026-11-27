@@ -14,7 +14,10 @@ if [ "${1:-}" = "accounts" ]; then
   curl -sf localhost:8080/health >/dev/null || { echo "start the app stack first (see README)"; exit 1; }
   set -a; . backend/.env; . backend/.env.admin; set +a
   trap 'sh scripts/e2e-cleanup.sh postgres' EXIT
-  (cd frontend && SIGNUP_E2E=1 npx playwright test signup deal team --workers=1)
+  for spec in signup deal team; do
+    (cd frontend && SIGNUP_E2E=1 npx playwright test "$spec" --workers=1)
+    [ "$spec" = team ] || sleep 60
+  done
   exit 0
 fi
 if [ "${1:-}" = "offline" ]; then

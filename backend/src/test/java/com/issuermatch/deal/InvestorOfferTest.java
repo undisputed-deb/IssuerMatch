@@ -61,9 +61,12 @@ class InvestorOfferTest {
     void aMatchedInvestorOffersWithStakeTermsAndRationaleAndTheIssuerSeesIt() throws Exception {
         deal = new Deals(db, "EQUITY");
         Deals.Party ivy = deal.investor("APPROVED");
-        String extra = WHY + ",\"proposedStakePct\":12.5,\"proposedTerms\":{\"valuation\":8000000,\"conditions\":\"Board observer seat\"}";
+        String letter = "Dear founder, our Managing Director is ready to lead this investment.";
+        String extra = WHY + ",\"proposedStakePct\":12.5,\"proposedTerms\":{\"valuation\":8000000,\"conditions\":\"Board observer seat\"}"
+                + ",\"offerLetter\":\"" + letter + "\"";
         send(Auth.investor(ivy.user()), key(), offer(deal.needId, ivy.investorId(), 500_000, extra))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("ACCEPTED"))
+                .andExpect(jsonPath("$.offerLetter").value(letter))
                 .andExpect(jsonPath("$.proposedStakePct").value(12.5))
                 .andExpect(jsonPath("$.decisions", hasSize(0))); // internal risk reasoning is not shown to the investor
 
@@ -86,7 +89,8 @@ class InvestorOfferTest {
                 .andExpect(jsonPath("$[0].amount").value(500000))
                 .andExpect(jsonPath("$[0].proposedStakePct").value(12.5))
                 .andExpect(jsonPath("$[0].proposedTerms.conditions").value("Board observer seat"))
-                .andExpect(jsonPath("$[0].investmentRationale").value("We like the team and the traction."));
+                .andExpect(jsonPath("$[0].investmentRationale").value("We like the team and the traction."))
+                .andExpect(jsonPath("$[0].offerLetter").value(letter));
         mvc.perform(get("/investor/offers").with(Auth.investor(ivy.user()))).andExpect(jsonPath("$", hasSize(1)))
                 .andExpect(jsonPath("$[0].status").value("ACCEPTED"));
     }
@@ -120,7 +124,8 @@ class InvestorOfferTest {
         send(me, key(), offer(deal.needId, ivy.investorId(), 500_000, WHY + ",\"proposedStakePct\":5")).andExpect(status().isBadRequest());
         for (String bad : new String[] {"\"proposedStakePct\":0", "\"proposedStakePct\":101", "\"proposedTerms\":{\"nope\":1}",
                 "\"proposedTerms\":{\"interestRatePct\":500}", "\"proposedTerms\":{\"tenorMonths\":0}",
-                "\"investmentRationale\":\"" + "x".repeat(5001) + "\""}) {
+                "\"investmentRationale\":\"" + "x".repeat(5001) + "\"",
+                "\"offerLetter\":\"" + "x".repeat(5001) + "\""}) {
             send(me, key(), offer(deal.needId, ivy.investorId(), 500_000, bad.startsWith("\"investmentRationale") ? bad : WHY + "," + bad))
                     .andExpect(status().isBadRequest());
         }
@@ -151,6 +156,8 @@ class InvestorOfferTest {
         // same key, same amount, different terms or rationale: a different request
         send(me, k, offer(deal.needId, ivy.investorId(), 400_000, WHY + ",\"proposedStakePct\":20")).andExpect(status().isUnprocessableEntity());
         send(me, k, offer(deal.needId, ivy.investorId(), 400_000, "\"investmentRationale\":\"other\",\"proposedStakePct\":10"))
+                .andExpect(status().isUnprocessableEntity());
+        send(me, k, offer(deal.needId, ivy.investorId(), 400_000, WHY + ",\"proposedStakePct\":10,\"offerLetter\":\"different\""))
                 .andExpect(status().isUnprocessableEntity());
         assertThat(db.queryForObject("SELECT remaining_capacity::text FROM funding_needs WHERE id = ?", String.class, deal.needId))
                 .isEqualTo("9600000.00");

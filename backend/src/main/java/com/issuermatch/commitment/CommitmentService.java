@@ -125,10 +125,10 @@ class CommitmentService {
 
         String terms = r.proposedTerms() == null ? null : json.writeValueAsString(r.proposedTerms());
         var created = db.queryForMap("INSERT INTO commitments(need_id, investor_id, amount, status, created_by,"
-                        + " proposed_stake_pct, proposed_terms_json, investment_rationale, investor_decision)"
-                        + " VALUES (?,?,?,?,?,?,jsonb_strip_nulls(?::jsonb),?,?) RETURNING id, created_at",
+                        + " proposed_stake_pct, proposed_terms_json, investment_rationale, investor_decision, offer_letter)"
+                        + " VALUES (?,?,?,?,?,?,jsonb_strip_nulls(?::jsonb),?,?,?) RETURNING id, created_at",
                 r.needId(), r.investorId(), r.amount(), status, actor, r.proposedStakePct(), terms, r.investmentRationale(),
-                asInvestor ? "INTERESTED" : null);
+                asInvestor ? "INTERESTED" : null, cleanLetter(r.offerLetter()));
         UUID id = (UUID) created.get("id");
         for (RiskEngine.RuleResult res : outcome.results()) {
             db.update("INSERT INTO risk_decisions(commitment_id, rule_id, verdict, reason, params) VALUES (?,?,?,?,?::jsonb)",
@@ -145,7 +145,8 @@ class CommitmentService {
                 .map(x -> new DecisionView(x.ruleId(), x.decision().verdict().name(), x.decision().reason())).toList();
         Response body = new Response(id, r.needId(), r.investorId(), r.amount(), status, remaining, views,
                 ((java.sql.Timestamp) created.get("created_at")).toInstant(), r.proposedStakePct(),
-                terms == null ? null : json.valueToTree(r.proposedTerms()), r.investmentRationale(), "PENDING");
+                terms == null ? null : json.valueToTree(r.proposedTerms()), r.investmentRationale(), "PENDING",
+                cleanLetter(r.offerLetter()));
 
         // Only a real decision is audited. A replay (same Idempotency-Key) never reaches this line.
         metrics.commitmentDecided(status);
@@ -225,14 +226,14 @@ class CommitmentService {
     Response get(UUID id) {
         List<Response> rows = db.query("SELECT c.id, c.need_id, c.investor_id, c.amount, c.status, c.created_at,"
                         + " n.remaining_capacity, c.proposed_stake_pct, c.proposed_terms_json::text AS terms, c.investment_rationale,"
-                        + " c.issuer_decision"
+                        + " c.issuer_decision, c.offer_letter"
                         + " FROM commitments c JOIN funding_needs n ON n.id = c.need_id WHERE c.id = ?",
                 (rs, n) -> new Response(rs.getObject("id", UUID.class), rs.getObject("need_id", UUID.class),
                         rs.getObject("investor_id", UUID.class), rs.getBigDecimal("amount"), rs.getString("status"),
                         rs.getBigDecimal("remaining_capacity"), List.of(), rs.getTimestamp("created_at").toInstant(),
                         rs.getBigDecimal("proposed_stake_pct"),
                         rs.getString("terms") == null ? null : json.readTree(rs.getString("terms")),
-                        rs.getString("investment_rationale"), rs.getString("issuer_decision")), id);
+                        rs.getString("investment_rationale"), rs.getString("issuer_decision"), rs.getString("offer_letter")), id);
         if (rows.isEmpty()) {
             throw new NotFoundException("Commitment not found");
         }
@@ -242,7 +243,7 @@ class CommitmentService {
                 (rs, n) -> new DecisionView(rs.getString("rule_id"), rs.getString("verdict"), rs.getString("reason")), id);
         return new Response(r.id(), r.needId(), r.investorId(), r.amount(), r.status(), r.remainingCapacity(),
                 decisions, r.createdAt(), r.proposedStakePct(), r.proposedTerms(), r.investmentRationale(),
-                r.issuerDecision());
+                r.issuerDecision(), r.offerLetter());
     }
 
     // ---- helpers ----
@@ -313,6 +314,10 @@ class CommitmentService {
     private int count(String sql, Object... args) {
         Integer n = db.queryForObject(sql, Integer.class, args);
         return n == null ? 0 : n;
+    }
+
+    private static String cleanLetter(String value) {
+        return value == null || value.isBlank() ? null : value.strip();
     }
 
     private static String sha256(String text) {
