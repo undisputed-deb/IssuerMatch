@@ -1,0 +1,105 @@
+.auth-avatar {
+  position: relative;
+  z-index: 0;
+  display: grid;
+  width: min(100%, 15rem);
+  height: 10rem;
+  margin: -0.5rem auto 1.25rem;
+  place-items: center;
+}
+
+.auth-avatar::before {
+  position: absolute;
+  z-index: -1;
+  bottom: 0.25rem;
+  width: 9rem;
+  height: 9rem;
+  border-radius: 50%;
+  background: var(--color-flag-bg);
+  content: '';
+}
+
+.auth-avatar svg {
+  width: 14rem;
+  height: 10.3rem;
+  overflow: visible;
+}
+
+.auth-avatar-shadow {
+  fill: rgb(20 33 61 / 12%);
+}
+
+.auth-avatar-head {
+  transform: rotate(var(--head-tilt));
+  transform-box: view-box;
+  transform-origin: 120px 78px;
+  transition: transform 180ms ease-out;
+}
+
+.auth-avatar-ear {
+  fill: #c08435;
+}
+
+.auth-avatar-fur {
+  fill: #e8b45f;
+  stroke: #14213d;
+  stroke-width: 3;
+}
+
+.auth-avatar-muzzle {
+  fill: #fff9ed;
+}
+
+.auth-avatar-eyes {
+  fill: #14213d;
+}
+
+.auth-avatar-nose {
+  fill: #14213d;
+}
+
+.auth-avatar-smile {
+  fill: none;
+  stroke: #14213d;
+  stroke-linecap: round;
+  stroke-width: 2.5;
+}
+
+.auth-avatar-tongue {
+  fill: #d77d83;
+}
+
+.auth-avatar-paws {
+  fill: #f2c878;
+  stroke: #14213d;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+  transform: translateY(28px);
+  transition: transform 280ms ease-out;
+}
+
+.auth-avatar-paws > path:first-child {
+  fill: none;
+  stroke-width: 11;
+}
+
+.auth-avatar-paw-mark {
+  fill: none;
+  stroke-width: 2;
+}
+
+.auth-avatar.covering .auth-avatar-paws {
+  transform: translateY(-37px);
+}
+
+.auth-avatar.peeking .auth-avatar-paws {
+  transform: translateY(-23px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-avatar-head,
+  .auth-avatar-paws {
+    transition: none;
+  }
+}

@@ -33,13 +33,16 @@ repeat load test, merging Dependabot PRs.
   only when approved.
 - `edccaa9`: browser tests for team invite + offer loop, `scripts/e2e.sh offline`, `docker-compose.offline.yml`, fix for
   minutes-long fallback matching when Gemini is unreachable.
+- Login page avatar animation adapted into the existing React/Supabase login and signup flow; built and deployed to the
+  local web container without touching auth behavior.
 
 Last verified on `edccaa9`: `./mvnw test` 390 pass (95.0% lines / 86.0% branches), frontend build ok, 60 endpoints,
 `scripts/e2e.sh offline` 6/6 pass.
 
 ## In progress
-- Nothing half-written. Commit `a8982bd` is pushed; custom offer letter is prominent at the top of the Managing Director
-  form. Frontend build passed and local web is healthy at localhost:5173. No Gemini calls.
+- No unfinished code changes. Login implementation passed `npm run build`, and local web container responds HTTP 200.
+  Reference behavior was tested in an isolated JS event harness; browser host was unavailable, so no live visual browser
+  check was possible. The reference sign-in button is inert; IssuerMatch retains its existing auth handlers.
 - `gh` is unavailable, so the latest `images` CI log has not been inspected.
 
 ## Next steps
